@@ -1,0 +1,84 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { Alert, Button } from "@/components/ui";
+import { api } from "@/lib/client/api";
+import { errorMessage } from "@/lib/errors";
+import type { OrderStatus } from "@/lib/types";
+
+const POLL_INTERVAL_MS = 2000;
+const POLL_DURATION_MS = 90_000;
+
+/**
+ * While the saga runs (stock reservation, payment), re-renders the page from the server every
+ * couple of seconds so the customer sees the outcome without reloading.
+ */
+export function OrderAutoRefresh({ status }: { status: OrderStatus }) {
+  const router = useRouter();
+  const inProgress = status === "PENDING" || status === "AWAITING_PAYMENT";
+  useEffect(() => {
+    if (!inProgress) {
+      return;
+    }
+    const started = Date.now();
+    const timer = setInterval(() => {
+      if (Date.now() - started > POLL_DURATION_MS) {
+        clearInterval(timer);
+        return;
+      }
+      router.refresh();
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [inProgress, router]);
+  return null;
+}
+
+/** Cancellation, possible until the order is paid. */
+export function CancelOrder({ orderId, adminView = false }: { orderId: string; adminView?: boolean }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!open) {
+    return (
+      <Button variant="secondary" onClick={() => setOpen(true)}>
+        Huỷ đơn hàng
+      </Button>
+    );
+  }
+
+  const cancel = async () => {
+    setSubmitting(true);
+    setError(null);
+    try {
+      await api.post(`/orders/${orderId}/cancel`, { reason: reason.trim() || null });
+      setOpen(false);
+      router.refresh();
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="card flex w-full max-w-md flex-col gap-3 p-4">
+      <label htmlFor="cancel-reason" className="label">
+        {adminView ? "Lý do huỷ (gửi tới khách hàng)" : "Lý do huỷ (không bắt buộc)"}
+      </label>
+      <textarea id="cancel-reason" rows={2} maxLength={255} value={reason} onChange={(event) => setReason(event.target.value)} className="input" />
+      {error && <Alert tone="danger">{error}</Alert>}
+      <div className="flex gap-2">
+        <Button variant="danger" onClick={cancel} loading={submitting}>
+          Xác nhận huỷ
+        </Button>
+        <Button variant="ghost" onClick={() => setOpen(false)} disabled={submitting}>
+          Không huỷ
+        </Button>
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,4 @@
+logging:
+  level:
+    com.shop.product: DEBUG
+    org.hibernate.SQL: DEBUG

@@ -1,0 +1,19 @@
+server:
+  port: ${AUTH_SERVICE_PORT:8081}
+
+spring:
+  datasource:
+    url: jdbc:postgresql://${app.infra.postgres-host}:${app.infra.postgres-port}/auth_db
+    username: auth_user
+    password: ${AUTH_DB_PASSWORD}
+  flyway:
+    # Used by V2__seed_roles_and_admin.sql to create the initial administrator
+    placeholders:
+      "[admin_email]": ${ADMIN_EMAIL}
+      "[admin_password]": ${ADMIN_PASSWORD}
+
+app:
+  auth:
+    access-token-ttl: ${JWT_ACCESS_TOKEN_TTL:15m}
+    refresh-token-ttl: ${JWT_REFRESH_TOKEN_TTL:7d}
+    refresh-token-cleanup-cron: "0 0 3 * * *"

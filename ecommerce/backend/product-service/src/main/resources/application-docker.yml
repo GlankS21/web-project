@@ -1,0 +1,4 @@
+logging:
+  level:
+    com.shop.product: INFO
+    org.hibernate.SQL: WARN

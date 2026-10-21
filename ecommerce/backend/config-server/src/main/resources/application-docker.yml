@@ -1,0 +1,12 @@
+# Inside Docker the configuration repository is mounted as a volume so it can be edited
+# without rebuilding the image (see docker-compose.yml).
+spring:
+  cloud:
+    config:
+      server:
+        native:
+          search-locations: ${CONFIG_SEARCH_LOCATIONS:file:/config-repo}
+
+logging:
+  level:
+    org.springframework.cloud.config: INFO

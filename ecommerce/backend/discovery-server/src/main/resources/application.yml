@@ -1,0 +1,53 @@
+# The registry is infrastructure that every other service depends on, so it is self-contained
+# and does not fetch its configuration from config-server.
+server:
+  port: ${DISCOVERY_SERVER_PORT:8761}
+  shutdown: graceful
+
+spring:
+  application:
+    name: discovery-server
+  profiles:
+    default: dev
+  security:
+    user:
+      name: ${EUREKA_USERNAME}
+      password: ${EUREKA_PASSWORD}
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+
+eureka:
+  instance:
+    hostname: ${EUREKA_HOSTNAME:localhost}
+  client:
+    # Standalone registry: it neither registers itself nor fetches the registry from a peer.
+    register-with-eureka: false
+    fetch-registry: false
+    service-url:
+      defaultZone: http://${eureka.instance.hostname}:${server.port}/eureka/
+  server:
+    wait-time-in-ms-when-sync-empty: 0
+    eviction-interval-timer-in-ms: 15000
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+  info:
+    env:
+      enabled: true
+
+info:
+  app:
+    name: ${spring.application.name}
+    description: Eureka service registry
+
+logging:
+  pattern:
+    level: "%5p [${spring.application.name:},%X{correlationId:-}]"

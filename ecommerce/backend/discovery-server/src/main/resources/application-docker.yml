@@ -1,0 +1,5 @@
+eureka:
+  instance:
+    hostname: ${EUREKA_HOSTNAME:discovery-server}
+  server:
+    enable-self-preservation: ${EUREKA_SELF_PRESERVATION:true}

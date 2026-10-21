@@ -1,0 +1,5 @@
+com.shop.common.autoconfigure.CorrelationIdServletAutoConfiguration
+com.shop.common.autoconfigure.CorrelationIdFeignAutoConfiguration
+com.shop.common.autoconfigure.CommonAmqpAutoConfiguration
+com.shop.common.autoconfigure.JwtServletSecurityAutoConfiguration
+com.shop.common.autoconfigure.JwtReactiveSecurityAutoConfiguration

@@ -1,0 +1,20 @@
+server:
+  port: ${PAYMENT_SERVICE_PORT:8087}
+
+spring:
+  datasource:
+    url: jdbc:postgresql://${app.infra.postgres-host}:${app.infra.postgres-port}/payment_db
+    username: payment_user
+    password: ${PAYMENT_DB_PASSWORD}
+
+app:
+  payment:
+    simulator:
+      # Card and e-wallet payments above this amount are declined (demonstrates saga compensation)
+      max-amount: ${PAYMENT_SIMULATOR_MAX_AMOUNT:50000000}
+      # Share of other card / e-wallet payments declined at random, 0.0 to 1.0
+      failure-rate: ${PAYMENT_SIMULATOR_FAILURE_RATE:0.0}
+    outbox:
+      poll-interval: 1s
+      batch-size: 50
+      retention: 7d

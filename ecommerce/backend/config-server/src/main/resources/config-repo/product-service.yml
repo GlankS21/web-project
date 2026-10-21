@@ -1,0 +1,13 @@
+server:
+  port: ${PRODUCT_SERVICE_PORT:8083}
+
+spring:
+  datasource:
+    url: jdbc:postgresql://${app.infra.postgres-host}:${app.infra.postgres-port}/product_db
+    username: product_user
+    password: ${PRODUCT_DB_PASSWORD}
+
+app:
+  catalog:
+    # ISO 4217 code of every catalogue price
+    currency: ${CATALOG_CURRENCY:VND}

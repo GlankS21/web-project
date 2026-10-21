@@ -1,0 +1,14 @@
+# Local development: credentials are read from the project .env file when the service is started
+# from the module directory, the backend directory or the repository root.
+spring:
+  config:
+    import:
+      - optional:file:.env[.properties]
+      - optional:file:../.env[.properties]
+      - optional:file:../../.env[.properties]
+
+eureka:
+  server:
+    # Services are restarted often during development; drop dead instances quickly.
+    enable-self-preservation: false
+    eviction-interval-timer-in-ms: 5000

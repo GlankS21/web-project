@@ -1,0 +1,15 @@
+# Shared overrides for the "docker" profile: infrastructure is reached by Docker Compose service names.
+spring:
+  rabbitmq:
+    host: ${RABBITMQ_HOST:rabbitmq}
+
+app:
+  infra:
+    postgres-host: ${POSTGRES_HOST:postgres}
+    # Port inside the Docker network, independent of the port published on the host
+    postgres-port: 5432
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://${EUREKA_USERNAME}:${EUREKA_PASSWORD}@${EUREKA_HOST:discovery-server}:${EUREKA_PORT:8761}/eureka/

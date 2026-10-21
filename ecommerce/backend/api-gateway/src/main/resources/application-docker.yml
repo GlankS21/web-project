@@ -1,0 +1,4 @@
+logging:
+  level:
+    com.shop.gateway: INFO
+    org.springframework.cloud.gateway: WARN

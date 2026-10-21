@@ -1,0 +1,54 @@
+server:
+  port: ${ORDER_SERVICE_PORT:8086}
+
+spring:
+  datasource:
+    url: jdbc:postgresql://${app.infra.postgres-host}:${app.infra.postgres-port}/order_db
+    username: order_user
+    password: ${ORDER_DB_PASSWORD}
+  cloud:
+    openfeign:
+      client:
+        config:
+          default:
+            connect-timeout: 2000
+            read-timeout: 5000
+      # Feign calls go through a Resilience4j circuit breaker; failures end in the client fallback
+      circuitbreaker:
+        enabled: true
+    circuitbreaker:
+      resilience4j:
+        # Run on the caller thread (keeps the correlation id in the MDC); Feign timeouts apply instead
+        disable-thread-pool: true
+        disable-time-limiter: true
+      bulkhead:
+        resilience4j:
+          enabled: false
+
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 15s
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+
+app:
+  order:
+    max-items: 50
+    max-quantity-per-item: 99
+    shipping:
+      # Flat shipping fee, waived from the free-shipping threshold (amounts in the catalogue currency)
+      flat-fee: 30000
+      free-threshold: 500000
+    # Orders still waiting for stock or payment after this delay are cancelled
+    payment-timeout: 15m
+    expiry-check-interval: 1m
+    outbox:
+      poll-interval: 1s
+      batch-size: 50
+      retention: 7d

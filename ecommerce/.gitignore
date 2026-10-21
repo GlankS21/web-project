@@ -1,0 +1,29 @@
+# Secrets
+.env
+!.env.example
+
+# Maven
+target/
+!.mvn/wrapper/maven-wrapper.properties
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+frontend/.env*.local
+*.tsbuildinfo
+frontend/next-env.d.ts
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/

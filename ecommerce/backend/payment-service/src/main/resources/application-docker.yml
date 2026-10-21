@@ -1,0 +1,4 @@
+logging:
+  level:
+    com.shop.payment: INFO
+    org.hibernate.SQL: WARN

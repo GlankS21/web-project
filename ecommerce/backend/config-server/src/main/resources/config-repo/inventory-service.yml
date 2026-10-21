@@ -1,0 +1,19 @@
+server:
+  port: ${INVENTORY_SERVICE_PORT:8084}
+
+spring:
+  datasource:
+    url: jdbc:postgresql://${app.infra.postgres-host}:${app.infra.postgres-port}/inventory_db
+    username: inventory_user
+    password: ${INVENTORY_DB_PASSWORD}
+
+app:
+  inventory:
+    # Stock records at or below this available quantity are reported as low stock
+    default-low-stock-threshold: 5
+    outbox:
+      # Saga replies (stock.reserved, ...) are written to an outbox table and relayed by a poller
+      poll-interval: 1s
+      batch-size: 50
+      # Published rows are deleted after this delay
+      retention: 7d

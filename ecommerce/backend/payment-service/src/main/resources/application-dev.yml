@@ -1,0 +1,4 @@
+logging:
+  level:
+    com.shop.payment: DEBUG
+    org.hibernate.SQL: DEBUG

@@ -1,0 +1,107 @@
+# ---------------------------------------------------------------------------
+# Shared configuration served to EVERY client service (all profiles).
+# Service-specific settings live in <spring.application.name>.yml next to this file.
+# Placeholders such as ${RABBITMQ_PASSWORD} are resolved by the client from its own
+# environment variables, so no secret is stored here.
+# ---------------------------------------------------------------------------
+server:
+  shutdown: graceful
+
+spring:
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+    deserialization:
+      fail-on-unknown-properties: false
+  datasource:
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  data:
+    web:
+      pageable:
+        default-page-size: 20
+        max-page-size: 100
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME}
+    password: ${RABBITMQ_PASSWORD}
+    listener:
+      simple:
+        default-requeue-rejected: false
+        retry:
+          enabled: true
+          initial-interval: 1s
+          multiplier: 2
+          max-attempts: 3
+    template:
+      retry:
+        enabled: true
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://${EUREKA_USERNAME}:${EUREKA_PASSWORD}@${EUREKA_HOST:localhost}:${EUREKA_PORT:8761}/eureka/
+    registry-fetch-interval-seconds: 10
+  instance:
+    prefer-ip-address: true
+    instance-id: ${spring.application.name}:${random.uuid}
+    lease-renewal-interval-in-seconds: 10
+    lease-expiration-duration-in-seconds: 30
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: when-authorized
+  info:
+    env:
+      enabled: true
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+app:
+  # Infrastructure endpoints, overridden in application-docker.yml
+  infra:
+    postgres-host: ${POSTGRES_HOST:localhost}
+    postgres-port: ${POSTGRES_PORT:5432}
+  security:
+    jwt:
+      # Base64 key of at least 256 bits shared by auth-service (signs) and all verifiers.
+      secret: ${JWT_SECRET}
+      issuer: ${JWT_ISSUER:ecommerce-auth-service}
+  openapi:
+    # "Try it out" in Swagger UI goes through the gateway
+    gateway-url: ${OPENAPI_GATEWAY_URL:http://localhost:8080}
+
+logging:
+  pattern:
+    level: "%5p [${spring.application.name:},%X{correlationId:-}]"
+  level:
+    root: INFO
+    com.shop: INFO

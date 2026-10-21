@@ -1,0 +1,36 @@
+server:
+  port: ${NOTIFICATION_SERVICE_PORT:8088}
+
+spring:
+  datasource:
+    url: jdbc:postgresql://${app.infra.postgres-host}:${app.infra.postgres-port}/notification_db
+    username: notification_user
+    password: ${NOTIFICATION_DB_PASSWORD}
+  mail:
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:1025}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail.smtp.auth: ${MAIL_SMTP_AUTH:false}
+      mail.smtp.starttls.enable: ${MAIL_SMTP_STARTTLS:false}
+      mail.smtp.connectiontimeout: 5000
+      mail.smtp.timeout: 5000
+      mail.smtp.writetimeout: 5000
+
+management:
+  health:
+    # An unreachable SMTP server must not mark the service DOWN: failed e-mails are retried
+    mail:
+      enabled: false
+
+app:
+  notification:
+    mail:
+      # false: e-mails are only written to the log
+      enabled: ${MAIL_ENABLED:true}
+      from: ${MAIL_FROM:no-reply@shop.local}
+    shop-name: ${SHOP_NAME:TechShop}
+    retry:
+      max-attempts: 5
+      interval: 1m

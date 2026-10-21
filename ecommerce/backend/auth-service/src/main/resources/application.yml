@@ -1,0 +1,25 @@
+# Bootstrap settings only. Runtime configuration is served by config-server from
+# config-repo/auth-service.yml and config-repo/application.yml.
+spring:
+  application:
+    name: auth-service
+  profiles:
+    default: dev
+  config:
+    import:
+      # Local development convenience: secrets from the project .env file (absent inside Docker)
+      - optional:file:.env[.properties]
+      - optional:file:../.env[.properties]
+      - optional:file:../../.env[.properties]
+      - optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}
+  cloud:
+    config:
+      username: ${CONFIG_SERVER_USERNAME}
+      password: ${CONFIG_SERVER_PASSWORD}
+      # Refuse to start with missing configuration; retry while config-server is booting.
+      fail-fast: true
+      retry:
+        initial-interval: 2000
+        multiplier: 1.5
+        max-interval: 10000
+        max-attempts: 20

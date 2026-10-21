@@ -1,0 +1,382 @@
+name: ecommerce
+
+# Usage:
+#   cp .env.example .env        # then edit the secrets
+#   docker compose up -d --build
+#
+# Infrastructure (PostgreSQL, RabbitMQ, Mailpit, config-server, discovery-server), the API gateway,
+# every business service and the Next.js frontend (http://localhost:3000).
+
+x-spring-service: &spring-service
+  restart: unless-stopped
+  networks:
+    - ecommerce-net
+
+# Settings every Spring application needs to reach the config server, Eureka and RabbitMQ.
+x-client-env: &client-env
+  SPRING_PROFILES_ACTIVE: docker
+  CONFIG_SERVER_URL: http://config-server:8888
+  CONFIG_SERVER_USERNAME: ${CONFIG_SERVER_USERNAME}
+  CONFIG_SERVER_PASSWORD: ${CONFIG_SERVER_PASSWORD}
+  EUREKA_USERNAME: ${EUREKA_USERNAME}
+  EUREKA_PASSWORD: ${EUREKA_PASSWORD}
+  RABBITMQ_USERNAME: ${RABBITMQ_USERNAME}
+  RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+  JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+  ADMIN_EMAIL: ${ADMIN_EMAIL:?ADMIN_EMAIL is required}
+  CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ecommerce-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_ADMIN_USER:?POSTGRES_ADMIN_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?POSTGRES_ADMIN_PASSWORD is required}
+      POSTGRES_DB: postgres
+      AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD:?AUTH_DB_PASSWORD is required}
+      USER_DB_PASSWORD: ${USER_DB_PASSWORD:?USER_DB_PASSWORD is required}
+      PRODUCT_DB_PASSWORD: ${PRODUCT_DB_PASSWORD:?PRODUCT_DB_PASSWORD is required}
+      INVENTORY_DB_PASSWORD: ${INVENTORY_DB_PASSWORD:?INVENTORY_DB_PASSWORD is required}
+      CART_DB_PASSWORD: ${CART_DB_PASSWORD:?CART_DB_PASSWORD is required}
+      ORDER_DB_PASSWORD: ${ORDER_DB_PASSWORD:?ORDER_DB_PASSWORD is required}
+      PAYMENT_DB_PASSWORD: ${PAYMENT_DB_PASSWORD:?PAYMENT_DB_PASSWORD is required}
+      NOTIFICATION_DB_PASSWORD: ${NOTIFICATION_DB_PASSWORD:?NOTIFICATION_DB_PASSWORD is required}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infrastructure/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - ecommerce-net
+
+  rabbitmq:
+    image: rabbitmq:4.0-management-alpine
+    container_name: ecommerce-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME:?RABBITMQ_USERNAME is required}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+    networks:
+      - ecommerce-net
+
+  # Development SMTP server: catches every e-mail sent by notification-service (web UI on port 8025)
+  mailpit:
+    image: axllent/mailpit:v1.21
+    container_name: ecommerce-mailpit
+    restart: unless-stopped
+    ports:
+      - "${MAILPIT_UI_PORT:-8025}:8025"
+      - "${MAILPIT_SMTP_PORT:-1025}:1025"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8025/livez"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - ecommerce-net
+
+  config-server:
+    <<: *spring-service
+    build:
+      context: ./backend
+      dockerfile: config-server/Dockerfile
+    image: ecommerce/config-server:latest
+    container_name: ecommerce-config-server
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      CONFIG_SERVER_USERNAME: ${CONFIG_SERVER_USERNAME:?CONFIG_SERVER_USERNAME is required}
+      CONFIG_SERVER_PASSWORD: ${CONFIG_SERVER_PASSWORD:?CONFIG_SERVER_PASSWORD is required}
+      CONFIG_SEARCH_LOCATIONS: file:/config-repo
+    ports:
+      - "${CONFIG_SERVER_PORT:-8888}:8888"
+    volumes:
+      - ./backend/config-server/src/main/resources/config-repo:/config-repo:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8888/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  discovery-server:
+    <<: *spring-service
+    build:
+      context: ./backend
+      dockerfile: discovery-server/Dockerfile
+    image: ecommerce/discovery-server:latest
+    container_name: ecommerce-discovery-server
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      EUREKA_USERNAME: ${EUREKA_USERNAME:?EUREKA_USERNAME is required}
+      EUREKA_PASSWORD: ${EUREKA_PASSWORD:?EUREKA_PASSWORD is required}
+    ports:
+      - "${DISCOVERY_SERVER_PORT:-8761}:8761"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8761/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  # ------------------------------------------------------------------ Phase 2
+  api-gateway:
+    <<: *spring-service
+    build:
+      context: ./backend
+      dockerfile: api-gateway/Dockerfile
+    image: ecommerce/api-gateway:latest
+    container_name: ecommerce-api-gateway
+    environment:
+      <<: *client-env
+      # Shared with the frontend only: lets it pass on the browser's address for rate limiting
+      TRUSTED_PROXY_SECRET: ${TRUSTED_PROXY_SECRET:-}
+      RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
+    ports:
+      - "${API_GATEWAY_PORT:-8080}:8080"
+    depends_on:
+      config-server: { condition: service_healthy }
+      discovery-server: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  # Business services are reachable only through the gateway (no published ports).
+  auth-service:
+    <<: *spring-service
+    build:
+      context: ./backend
+      dockerfile: auth-service/Dockerfile
+    image: ecommerce/auth-service:latest
+    container_name: ecommerce-auth-service
+    environment:
+      <<: *client-env
+      AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}
+    depends_on:
+      config-server: { condition: service_healthy }
+      discovery-server: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8081/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+
+  user-service:
+    <<: *spring-service
+    build:
+      context: ./backend
+      dockerfile: user-service/Dockerfile
+    image: ecommerce/user-service:latest
+    container_name: ecommerce-user-service
+    environment:
+      <<: *client-env
+      USER_DB_PASSWORD: ${USER_DB_PASSWORD}
+    depends_on:
+      config-server: { condition: service_healthy }
+      discovery-server: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8082/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+
+  # ------------------------------------------------------------------ Phase 3
+  product-service:
+    <<: *spring-service
+    build:
+      context: ./backend
+      dockerfile: product-service/Dockerfile
+    image: ecommerce/product-service:latest
+    container_name: ecommerce-product-service
+    environment:
+      <<: *client-env
+      PRODUCT_DB_PASSWORD: ${PRODUCT_DB_PASSWORD}
+      CATALOG_CURRENCY: ${CATALOG_CURRENCY:-VND}
+    depends_on:
+      config-server: { condition: service_healthy }
+      discovery-server: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8083/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+
+  inventory-service:
+    <<: *spring-service
+    build:
+      context: ./backend
+      dockerfile: inventory-service/Dockerfile
+    image: ecommerce/inventory-service:latest
+    container_name: ecommerce-inventory-service
+    environment:
+      <<: *client-env
+      INVENTORY_DB_PASSWORD: ${INVENTORY_DB_PASSWORD}
+    depends_on:
+      config-server: { condition: service_healthy }
+      discovery-server: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8084/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+
+  # ------------------------------------------------------------------ Phase 4
+  cart-service:
+    <<: *spring-service
+    build:
+      context: ./backend
+      dockerfile: cart-service/Dockerfile
+    image: ecommerce/cart-service:latest
+    container_name: ecommerce-cart-service
+    environment:
+      <<: *client-env
+      CART_DB_PASSWORD: ${CART_DB_PASSWORD}
+    depends_on:
+      config-server: { condition: service_healthy }
+      discovery-server: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8085/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+
+  order-service:
+    <<: *spring-service
+    build:
+      context: ./backend
+      dockerfile: order-service/Dockerfile
+    image: ecommerce/order-service:latest
+    container_name: ecommerce-order-service
+    environment:
+      <<: *client-env
+      ORDER_DB_PASSWORD: ${ORDER_DB_PASSWORD}
+    depends_on:
+      config-server: { condition: service_healthy }
+      discovery-server: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8086/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+
+  payment-service:
+    <<: *spring-service
+    build:
+      context: ./backend
+      dockerfile: payment-service/Dockerfile
+    image: ecommerce/payment-service:latest
+    container_name: ecommerce-payment-service
+    environment:
+      <<: *client-env
+      PAYMENT_DB_PASSWORD: ${PAYMENT_DB_PASSWORD}
+      PAYMENT_SIMULATOR_MAX_AMOUNT: ${PAYMENT_SIMULATOR_MAX_AMOUNT:-50000000}
+      PAYMENT_SIMULATOR_FAILURE_RATE: ${PAYMENT_SIMULATOR_FAILURE_RATE:-0.0}
+    depends_on:
+      config-server: { condition: service_healthy }
+      discovery-server: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8087/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+
+  notification-service:
+    <<: *spring-service
+    build:
+      context: ./backend
+      dockerfile: notification-service/Dockerfile
+    image: ecommerce/notification-service:latest
+    container_name: ecommerce-notification-service
+    environment:
+      <<: *client-env
+      NOTIFICATION_DB_PASSWORD: ${NOTIFICATION_DB_PASSWORD}
+      MAIL_HOST: ${MAIL_HOST:-mailpit}
+      MAIL_PORT: ${MAIL_PORT:-1025}
+      MAIL_FROM: ${MAIL_FROM:-no-reply@shop.local}
+      SHOP_NAME: ${SHOP_NAME:-TechShop}
+    depends_on:
+      config-server: { condition: service_healthy }
+      discovery-server: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+      mailpit: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8088/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+
+  frontend:
+    build:
+      context: ./frontend
+    image: ecommerce/frontend:latest
+    container_name: ecommerce-frontend
+    restart: unless-stopped
+    networks:
+      - ecommerce-net
+    environment:
+      API_GATEWAY_URL: http://api-gateway:8080
+      TRUSTED_PROXY_SECRET: ${TRUSTED_PROXY_SECRET:-}
+      TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-0}
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      api-gateway: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+networks:
+  ecommerce-net:
+    name: ecommerce-net
+
+volumes:
+  postgres-data:
+  rabbitmq-data:

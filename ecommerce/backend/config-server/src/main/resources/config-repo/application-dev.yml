@@ -1,0 +1,4 @@
+# Shared overrides for the "dev" profile (services running on the host, infrastructure in Docker).
+logging:
+  level:
+    com.shop: DEBUG

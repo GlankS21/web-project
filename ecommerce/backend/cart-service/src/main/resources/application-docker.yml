@@ -1,0 +1,4 @@
+logging:
+  level:
+    com.shop.cart: INFO
+    org.hibernate.SQL: WARN

@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(docker info --format '{{.ServerVersion}} {{.MemTotal}}'; docker compose version)"
+    ]
+  }
+}
