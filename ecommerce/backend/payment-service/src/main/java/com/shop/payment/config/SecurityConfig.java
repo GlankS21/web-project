@@ -13,9 +13,9 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 import org.springframework.security.web.SecurityFilterChain;
 
 /**
- * Every payment endpoint requires an access token. Customers only reach the payment of their own
- * orders (checked in the service layer); the payment list requires {@code ROLE_ADMIN} via
- * {@code @PreAuthorize}.
+ * Every payment endpoint requires an access token, except the provider's webhook (its notifications
+ * are verified against the provider's API). Customers only reach the payment of their own orders
+ * (checked in the service layer); the payment list requires {@code ROLE_ADMIN} via {@code @PreAuthorize}.
  */
 @Configuration
 @EnableMethodSecurity
@@ -27,7 +27,8 @@ public class SecurityConfig {
             "/v3/api-docs/**",
             "/swagger-ui/**",
             "/swagger-ui.html",
-            "/error"
+            "/error",
+            "/api/payments/webhooks/**"
     };
 
     @Bean

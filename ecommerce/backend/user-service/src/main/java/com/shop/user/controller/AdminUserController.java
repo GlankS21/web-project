@@ -2,7 +2,9 @@ package com.shop.user.controller;
 
 import com.shop.common.dto.ApiResponse;
 import com.shop.common.dto.PageResponse;
+import com.shop.user.dto.response.AddressResponse;
 import com.shop.user.dto.response.UserProfileResponse;
+import com.shop.user.service.AddressService;
 import com.shop.user.service.UserProfileService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -19,9 +21,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.UUID;
 
-@Tag(name = "User administration", description = "Browse user profiles (admin only)")
+@Tag(name = "Администрирование пользователей", description = "Просмотр профилей и адресных книг пользователей (только для администратора)")
 @PreAuthorize("hasRole('ADMIN')")
 @RestController
 @RequestMapping("/api/users")
@@ -29,20 +32,29 @@ import java.util.UUID;
 public class AdminUserController {
 
     private final UserProfileService userProfileService;
+    private final AddressService addressService;
 
-    @Operation(summary = "Search profiles by email or name")
+    @Operation(summary = "Найти профили по e-mail, имени или фамилии")
     @GetMapping
     public ApiResponse<PageResponse<UserProfileResponse>> search(
-            @Parameter(description = "Part of the email, first name or last name")
+            @Parameter(description = "Часть e-mail, имени или фамилии", example = "Петров")
             @RequestParam(name = "keyword", required = false) String keyword,
             @ParameterObject
             @PageableDefault(sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
         return ApiResponse.success(userProfileService.searchProfiles(keyword, pageable));
     }
 
-    @Operation(summary = "Get a profile")
+    @Operation(summary = "Получить профиль")
     @GetMapping("/{userId}")
-    public ApiResponse<UserProfileResponse> get(@PathVariable("userId") UUID userId) {
+    public ApiResponse<UserProfileResponse> get(
+            @Parameter(description = "Идентификатор пользователя") @PathVariable("userId") UUID userId) {
         return ApiResponse.success(userProfileService.getProfile(userId));
+    }
+
+    @Operation(summary = "Адресная книга пользователя (адрес по умолчанию первым)")
+    @GetMapping("/{userId}/addresses")
+    public ApiResponse<List<AddressResponse>> addresses(
+            @Parameter(description = "Идентификатор пользователя") @PathVariable("userId") UUID userId) {
+        return ApiResponse.success(addressService.listAddresses(userId));
     }
 }

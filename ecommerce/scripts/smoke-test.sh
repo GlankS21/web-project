@@ -4,8 +4,9 @@
 #
 #   ADMIN_EMAIL=admin@shop.local ADMIN_PASSWORD=... scripts/smoke-test.sh
 #
-# It creates data (a category, a product, a customer, an order): run it against a local or test stack,
-# never production. Needs bash, curl and node.
+# It creates data (a category, a product, a customer, orders): run it against a local or test stack,
+# never production. Online payments need PAYMENT_PROVIDER=mock (the default): they are paid with
+# YooKassa test cards in the mock card form. Needs bash, curl and node.
 set -u
 
 BASE=${FRONTEND_URL:-http://localhost:3000}
@@ -39,6 +40,41 @@ json() {
 }
 # Bodies with non-ASCII text are sent from files: curl on Windows re-encodes command-line arguments
 body() { printf '%s' "$2" > "$DIR/$1.json"; echo "@$DIR/$1.json"; }
+# Provider id of the mock payment of an order once it waits for the card (empty after 30 s)
+wait_for_mock_payment() {
+  local id=
+  for _ in $(seq 1 30); do
+    id=$(curl -s -b "$C" "$BASE/api/payments/orders/$1" | node -e '
+      let s = "";
+      process.stdin.on("data", (d) => (s += d)).on("end", () => {
+        try {
+          const p = JSON.parse(s).data;
+          const charge = p.status === "PENDING" && p.confirmationToken
+            ? p.transactions.findLast((t) => t.type === "CHARGE" && t.status === "PENDING") : null;
+          console.log(charge?.providerId ?? "");
+        } catch { console.log(""); }
+      });')
+    [ -n "$id" ] && break
+    sleep 1
+  done
+  echo "$id"
+}
+# pay_with_card <mock payment> <card number> [3-D Secure code]
+pay_with_card() {
+  local code=${3:+",\"threeDSecureCode\":\"$3\""}
+  curl -s -b "$C" -X POST -H "$ORIGIN" -H "$JSON" \
+    -d "{\"cardNumber\":\"$2\",\"expiry\":\"12/30\",\"cvc\":\"123\"$code}" "$BASE/api/payments/mock/$1/pay"
+}
+# Status of an order once it reaches the expected one or is cancelled (30 s at most)
+wait_for_order() {
+  local status=
+  for _ in $(seq 1 30); do
+    status=$(curl -s -b "$C" "$BASE/api/orders/$1" | json data.status)
+    { [ "$status" = "$2" ] || [ "$status" = CANCELLED ]; } && break
+    sleep 1
+  done
+  echo "$status"
+}
 
 echo "== API documentation (gateway)"
 for service in auth-service user-service product-service inventory-service cart-service order-service \
@@ -75,7 +111,7 @@ SUFFIX=$(date +%s)
 CATEGORY=$(curl -s -b "$A" -X POST -H "$ORIGIN" -H "$JSON" -d "{\"name\":\"Smoke $SUFFIX\"}" "$BASE/api/categories" | json data.id)
 check "category created" true "$([ -n "$CATEGORY" ] && echo true)"
 PRODUCT=$(curl -s -b "$A" -X POST -H "$ORIGIN" -H "$JSON" --data-binary "$(body product \
-  "{\"sku\":\"SMOKE-$SUFFIX\",\"name\":\"Tai nghe kiểm thử $SUFFIX\",\"price\":1990000,\"categoryId\":$CATEGORY,\"status\":\"ACTIVE\",\"images\":[{\"url\":\"https://example.com/a.jpg\"}]}")" \
+  "{\"sku\":\"SMOKE-$SUFFIX\",\"name\":\"Тестовые наушники $SUFFIX\",\"price\":19990,\"categoryId\":$CATEGORY,\"status\":\"ACTIVE\",\"images\":[{\"url\":\"https://example.com/a.jpg\"}]}")" \
   "$BASE/api/products")
 PRODUCT_ID=$(echo "$PRODUCT" | json data.id)
 SLUG=$(echo "$PRODUCT" | json data.slug)
@@ -87,7 +123,7 @@ check "stock page" 200 "$(code -b "$A" "$BASE/admin/inventory/$PRODUCT_ID")"
 echo "== customer"
 C=$DIR/customer.jar
 check "register" 201 "$(code -c "$C" -X POST -H "$ORIGIN" -H "$JSON" --data-binary "$(body register \
-  "{\"email\":\"smoke.$SUFFIX@example.com\",\"password\":\"Secret123\",\"firstName\":\"An\",\"lastName\":\"Nguyễn\"}")" \
+  "{\"email\":\"smoke.$SUFFIX@example.com\",\"password\":\"Secret123\",\"firstName\":\"Иван\",\"lastName\":\"Петров\"}")" \
   "$BASE/api/auth/register")"
 check "no admin pages" "307 $BASE/" "$(curl -s -b "$C" -o /dev/null -w '%{http_code} %{redirect_url}' "$BASE/admin")"
 check "no admin API" 403 "$(code -b "$C" "$BASE/api/orders/admin")"
@@ -95,22 +131,26 @@ check "product page" 200 "$(code -b "$C" "$BASE/products/$SLUG")"
 check "add to cart" 200 "$(code -b "$C" -X POST -H "$ORIGIN" -H "$JSON" -d "{\"productId\":$PRODUCT_ID,\"quantity\":2}" "$BASE/api/cart/items")"
 check "cart page" 200 "$(code -b "$C" "$BASE/cart")"
 check "checkout page" 200 "$(code -b "$C" "$BASE/checkout")"
-ADDRESS='{"recipientName":"Nguyễn An","phoneNumber":"0912345678","addressLine1":"1 Lê Lợi","city":"Hồ Chí Minh","countryCode":"VN"}'
+ADDRESS='{"recipientName":"Иван Петров","phoneNumber":"+79161234567","addressLine1":"ул. Тверская, д. 1, кв. 10","city":"Москва","postalCode":"125009","countryCode":"RU"}'
 check "address saved" 201 "$(code -b "$C" -X POST -H "$ORIGIN" -H "$JSON" --data-binary "$(body address "$ADDRESS")" "$BASE/api/users/me/addresses")"
 KEY=$(node -e 'console.log(crypto.randomUUID())')
-ORDER=$(body order "{\"items\":[{\"productId\":$PRODUCT_ID,\"quantity\":2}],\"shippingAddress\":$ADDRESS,\"paymentMethod\":\"CARD\"}")
+ORDER=$(body order "{\"items\":[{\"productId\":$PRODUCT_ID,\"quantity\":2}],\"shippingAddress\":$ADDRESS,\"paymentMethod\":\"ONLINE\"}")
 ORDER_ID=$(curl -s -b "$C" -X POST -H "$ORIGIN" -H "$JSON" -H "Idempotency-Key: $KEY" --data-binary "$ORDER" "$BASE/api/orders" | json data.id)
 check "order placed" 36 "${#ORDER_ID}"
 check "same Idempotency-Key, same order" "$ORDER_ID" \
   "$(curl -s -b "$C" -X POST -H "$ORIGIN" -H "$JSON" -H "Idempotency-Key: $KEY" --data-binary "$ORDER" "$BASE/api/orders" | json data.id)"
-STATUS=
-for _ in $(seq 1 30); do
-  STATUS=$(curl -s -b "$C" "$BASE/api/orders/$ORDER_ID" | json data.status)
-  if [ "$STATUS" = PAID ] || [ "$STATUS" = CANCELLED ]; then break; fi
-  sleep 1
-done
-check "saga: order paid" PAID "$STATUS"
-check "payment succeeded" SUCCEEDED "$(curl -s -b "$C" "$BASE/api/payments/orders/$ORDER_ID" | json data.status)"
+check "payment page" 200 "$(code -b "$C" "$BASE/orders/$ORDER_ID/payment")"
+MOCK_PAYMENT=$(wait_for_mock_payment "$ORDER_ID")
+check "saga: stock reserved, payment waits for the card" true "$([ -n "$MOCK_PAYMENT" ] && echo true)"
+check "declined test card" "FAILED insufficient_funds" "$(pay_with_card "$MOCK_PAYMENT" 5555555555554600 | json data.payment.status) \
+$(curl -s -b "$C" "$BASE/api/payments/orders/$ORDER_ID" | json data.failureReason)"
+check "order still awaits payment" AWAITING_PAYMENT "$(curl -s -b "$C" "$BASE/api/orders/$ORDER_ID" | json data.status)"
+check "another card" PENDING "$(curl -s -b "$C" -X POST -H "$ORIGIN" "$BASE/api/payments/orders/$ORDER_ID/retry" | json data.status)"
+MOCK_PAYMENT=$(wait_for_mock_payment "$ORDER_ID")
+check "3-D Secure asked" true "$(pay_with_card "$MOCK_PAYMENT" 5555555555554477 | json data.threeDSecureRequired)"
+check "3-D Secure confirmed" SUCCEEDED "$(pay_with_card "$MOCK_PAYMENT" 5555555555554477 123 | json data.payment.status)"
+check "saga: order paid" PAID "$(wait_for_order "$ORDER_ID" PAID)"
+check "two attempts recorded" 2 "$(curl -s -b "$C" "$BASE/api/payments/orders/$ORDER_ID" | json data.transactions.length)"
 check "order page" 200 "$(code -b "$C" "$BASE/orders/$ORDER_ID?placed=1")"
 sleep 2
 check "ordered product left the cart" 0 "$(curl -s -b "$C" "$BASE/api/cart" | json data.items.length)"
@@ -118,8 +158,27 @@ for page in /orders /account /account/addresses /account/notifications /account/
   check "page $page" 200 "$(code -b "$C" "$BASE$page")"
 done
 check "admin ships the order" SHIPPED "$(curl -s -b "$A" -X PATCH -H "$ORIGIN" -H "$JSON" \
-  -d '{"status":"SHIPPED","note":"VN123"}' "$BASE/api/orders/admin/$ORDER_ID/status" | json data.status)"
+  -d '{"status":"SHIPPED","note":"RU123"}' "$BASE/api/orders/admin/$ORDER_ID/status" | json data.status)"
 check "admin order page" 200 "$(code -b "$A" "$BASE/admin/orders/$ORDER_ID")"
+
+echo "== paid order cancelled by the administrator: refund and stock back"
+AVAILABLE=$(curl -s "$BASE/api/inventory/availability?productIds=$PRODUCT_ID" | json data.0.availableQuantity)
+KEY=$(node -e 'console.log(crypto.randomUUID())')
+ORDER_ID=$(curl -s -b "$C" -X POST -H "$ORIGIN" -H "$JSON" -H "Idempotency-Key: $KEY" --data-binary "$ORDER" "$BASE/api/orders" | json data.id)
+MOCK_PAYMENT=$(wait_for_mock_payment "$ORDER_ID")
+check "paid" SUCCEEDED "$(pay_with_card "$MOCK_PAYMENT" 5555555555554444 | json data.payment.status)"
+check "saga: second order paid" PAID "$(wait_for_order "$ORDER_ID" PAID)"
+check "admin cancels" CANCELLED "$(curl -s -b "$A" -X POST -H "$ORIGIN" -H "$JSON" -d '{"reason":"Smoke test"}' \
+  "$BASE/api/orders/$ORDER_ID/cancel" | json data.status)"
+REFUND=
+for _ in $(seq 1 30); do
+  REFUND=$(curl -s -b "$C" "$BASE/api/payments/orders/$ORDER_ID" | json data.status)
+  [ "$REFUND" = REFUNDED ] && break
+  sleep 1
+done
+check "payment refunded" REFUNDED "$REFUND"
+check "refund recorded on the order" true "$(sleep 2; [ -n "$(curl -s -b "$C" "$BASE/api/orders/$ORDER_ID" | json data.refundedAt)" ] && echo true)"
+check "sold units back in stock" "$AVAILABLE" "$(curl -s "$BASE/api/inventory/availability?productIds=$PRODUCT_ID" | json data.0.availableQuantity)"
 
 echo "== token refresh: expired access token, five concurrent requests"
 grep -v shop_at "$C" > "$DIR/refresh.jar"

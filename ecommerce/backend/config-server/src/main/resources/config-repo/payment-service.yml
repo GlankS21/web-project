@@ -9,11 +9,24 @@ spring:
 
 app:
   payment:
-    simulator:
-      # Card and e-wallet payments above this amount are declined (demonstrates saga compensation)
-      max-amount: ${PAYMENT_SIMULATOR_MAX_AMOUNT:50000000}
-      # Share of other card / e-wallet payments declined at random, 0.0 to 1.0
-      failure-rate: ${PAYMENT_SIMULATOR_FAILURE_RATE:0.0}
+    # yookassa: real (test) YooKassa shop; mock: local imitation of the payment page, no account needed
+    provider: ${PAYMENT_PROVIDER:mock}
+    # Online payments are accepted in this currency only
+    currency: RUB
+    # Public address of the website: the customer returns there after paying
+    max-attempts: 5
+    yookassa:
+      api-url: https://api.yookassa.ru/v3
+      shop-id: ${YOOKASSA_SHOP_ID:}
+      secret-key: ${YOOKASSA_SECRET_KEY:}
+      connect-timeout: 5s
+      read-timeout: 20s
+    # Asks the provider about operations it has not notified yet (no webhook when running locally)
+    reconciliation:
+      interval: 1m
+      min-age: 1m
+      max-age: 24h
+      batch-size: 50
     outbox:
       poll-interval: 1s
       batch-size: 50

@@ -1,14 +1,18 @@
 package com.shop.user.util;
 
+/**
+ * Bean Validation patterns of user-service. The messages are keys of the shared
+ * {@code common-messages_ru.properties}.
+ */
 public final class ValidationPatterns {
 
-    /** Optional leading +, then 9 to 15 digits (E.164 length). */
-    public static final String PHONE = "^\\+?[0-9]{9,15}$";
-    public static final String PHONE_MESSAGE = "must be a phone number of 9 to 15 digits, optionally starting with +";
+    /** Russian mobile or landline number in international format: +7 then 10 digits. */
+    public static final String PHONE = "^\\+7\\d{10}$";
+    public static final String PHONE_MESSAGE = "{validation.phone}";
 
     /** ISO 3166-1 alpha-2 country code. */
     public static final String COUNTRY_CODE = "^[A-Z]{2}$";
-    public static final String COUNTRY_CODE_MESSAGE = "must be an ISO 3166-1 alpha-2 code such as VN";
+    public static final String COUNTRY_CODE_MESSAGE = "{validation.country-code}";
 
     private ValidationPatterns() {
     }

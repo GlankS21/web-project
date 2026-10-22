@@ -2,6 +2,7 @@ package com.shop.order.messaging.consumer;
 
 import com.shop.common.constant.MessagingConstants;
 import com.shop.common.event.PaymentFailedEvent;
+import com.shop.common.event.PaymentRefundedEvent;
 import com.shop.common.event.PaymentSucceededEvent;
 import com.shop.common.event.StockReservationFailedEvent;
 import com.shop.common.event.StockReservedEvent;
@@ -48,5 +49,12 @@ public class SagaReplyConsumer {
         log.info("Received {} (event {}) for order {}",
                 MessagingConstants.PAYMENT_FAILED_KEY, event.eventId(), event.orderNumber());
         orderSagaService.onPaymentFailed(event);
+    }
+
+    @RabbitListener(queues = MessagingConstants.ORDER_PAYMENT_REFUNDED_QUEUE)
+    public void onPaymentRefunded(PaymentRefundedEvent event) {
+        log.info("Received {} (event {}) for order {}",
+                MessagingConstants.PAYMENT_REFUNDED_KEY, event.eventId(), event.orderNumber());
+        orderSagaService.onPaymentRefunded(event);
     }
 }

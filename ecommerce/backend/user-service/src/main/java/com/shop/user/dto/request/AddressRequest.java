@@ -8,43 +8,45 @@ import jakarta.validation.constraints.Size;
 
 public record AddressRequest(
 
-        @Schema(example = "John Doe")
+        @Schema(description = "Имя и фамилия получателя", example = "Иван Петров")
         @NotBlank @Size(max = 150)
         String recipientName,
 
-        @Schema(example = "+84901234567")
+        @Schema(description = "Телефон получателя в формате +7XXXXXXXXXX", example = "+79161234567")
         @NotBlank
         @Pattern(regexp = ValidationPatterns.PHONE, message = ValidationPatterns.PHONE_MESSAGE)
         String phoneNumber,
 
-        @Schema(example = "12 Nguyen Hue")
+        @Schema(description = "Улица, дом, квартира", example = "ул. Тверская, д. 7, кв. 12")
         @NotBlank @Size(max = 255)
         String addressLine1,
 
+        @Schema(description = "Дополнительно: подъезд, этаж, домофон", example = "подъезд 2, этаж 5")
         @Size(max = 255)
         String addressLine2,
 
-        @Schema(example = "Ben Nghe")
+        @Schema(description = "Район или муниципальный округ", example = "Тверской")
         @Size(max = 100)
         String ward,
 
-        @Schema(example = "District 1")
+        @Schema(description = "Административный округ или район области", example = "Центральный административный округ")
         @Size(max = 100)
         String district,
 
-        @Schema(example = "Ho Chi Minh City")
+        @Schema(description = "Город или населённый пункт", example = "Москва")
         @NotBlank @Size(max = 100)
         String city,
 
+        @Schema(description = "Почтовый индекс", example = "125009")
         @Size(max = 20)
         String postalCode,
 
-        @Schema(example = "VN")
-        @NotBlank
+        @Schema(description = "Код страны ISO 3166-1 alpha-2; если не указан - RU", example = "RU",
+                defaultValue = "RU")
         @Pattern(regexp = ValidationPatterns.COUNTRY_CODE, message = ValidationPatterns.COUNTRY_CODE_MESSAGE)
         String countryCode,
 
-        @Schema(description = "Make this the default shipping address. The first address is always the default.")
+        @Schema(description = "Сделать адресом доставки по умолчанию. Первый адрес всегда становится адресом по умолчанию.")
         Boolean defaultAddress
 ) {
 }

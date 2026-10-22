@@ -13,11 +13,13 @@ import org.springframework.stereotype.Component;
 @Component
 public class InventoryClientFallbackFactory implements FallbackFactory<InventoryClient> {
 
+    static final String STOCK_UNAVAILABLE = "cart.error.stock-unavailable";
+
     @Override
     public InventoryClient create(Throwable cause) {
         return productIds -> {
             log.warn("inventory-service call failed: {}", cause.toString());
-            throw new ServiceUnavailableException("Stock availability is temporarily unavailable", cause);
+            throw new ServiceUnavailableException(STOCK_UNAVAILABLE, cause);
         };
     }
 }

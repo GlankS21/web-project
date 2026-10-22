@@ -20,10 +20,10 @@ public class OpenApiConfig {
     public OpenAPI authServiceOpenApi(@Value("${app.openapi.gateway-url:http://localhost:8080}") String gatewayUrl) {
         return new OpenAPI()
                 .info(new Info()
-                        .title("Auth Service API")
+                        .title("API сервиса аутентификации")
                         .version("v1")
-                        .description("Registration, login, token refresh/revocation and account role management"))
-                .servers(List.of(new Server().url(gatewayUrl).description("API Gateway")))
+                        .description("Регистрация, вход, обновление и отзыв токенов, управление ролями аккаунтов"))
+                .servers(List.of(new Server().url(gatewayUrl).description("API-шлюз")))
                 .components(new Components().addSecuritySchemes(BEARER_SCHEME, new SecurityScheme()
                         .type(SecurityScheme.Type.HTTP)
                         .scheme("bearer")

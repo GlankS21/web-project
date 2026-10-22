@@ -18,6 +18,9 @@ import {
 const BLOCKED = new Set(["auth/login", "auth/register", "auth/logout", "auth/refresh"]);
 const FORWARDED_REQUEST_HEADERS = ["content-type", "idempotency-key"];
 const MAX_BODY_BYTES = 1_000_000;
+/** Product images uploaded by administrators (product-service accepts up to 5 MB plus the multipart framing). */
+const UPLOAD_PATHS = new Set(["products/images"]);
+const MAX_UPLOAD_BYTES = 6_000_000;
 
 interface Context {
   params: Promise<{ path: string[] }>;
@@ -49,7 +52,7 @@ async function relay(request: NextRequest, { params }: Context): Promise<NextRes
   let body: ArrayBuffer | undefined;
   if (hasBody) {
     body = await request.arrayBuffer();
-    if (body.byteLength > MAX_BODY_BYTES) {
+    if (body.byteLength > (UPLOAD_PATHS.has(target) ? MAX_UPLOAD_BYTES : MAX_BODY_BYTES)) {
       return errorJson(413, "BAD_REQUEST", "Request body too large", requestPath);
     }
     if (body.byteLength === 0) {

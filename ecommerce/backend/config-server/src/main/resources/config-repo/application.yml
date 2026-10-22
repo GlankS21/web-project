@@ -10,6 +10,10 @@ server:
 spring:
   lifecycle:
     timeout-per-shutdown-phase: 20s
+  # Responses, validation messages and e-mails are in Russian whatever the client sends
+  web:
+    locale: ru_RU
+    locale-resolver: fixed
   jackson:
     default-property-inclusion: non_null
     serialization:

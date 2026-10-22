@@ -13,11 +13,13 @@ import org.springframework.stereotype.Component;
 @Component
 public class ProductClientFallbackFactory implements FallbackFactory<ProductClient> {
 
+    static final String CATALOGUE_UNAVAILABLE = "cart.error.catalogue-unavailable";
+
     @Override
     public ProductClient create(Throwable cause) {
         return ids -> {
             log.warn("product-service call failed: {}", cause.toString());
-            throw new ServiceUnavailableException("The product catalogue is temporarily unavailable, please retry", cause);
+            throw new ServiceUnavailableException(CATALOGUE_UNAVAILABLE, cause);
         };
     }
 }

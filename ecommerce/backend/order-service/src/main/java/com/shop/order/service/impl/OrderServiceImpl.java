@@ -10,17 +10,21 @@ import com.shop.common.security.AuthenticatedUser;
 import com.shop.order.client.ProductClient;
 import com.shop.order.client.ProductSummary;
 import com.shop.order.config.OrderProperties;
+import com.shop.order.dto.request.CouponPreviewRequest;
 import com.shop.order.dto.request.CreateOrderRequest;
 import com.shop.order.dto.request.OrderItemRequest;
 import com.shop.order.dto.request.UpdateOrderStatusRequest;
+import com.shop.order.dto.response.CouponPreviewResponse;
 import com.shop.order.dto.response.OrderResponse;
 import com.shop.order.dto.response.OrderSummaryResponse;
+import com.shop.order.entity.Coupon;
 import com.shop.order.entity.Order;
 import com.shop.order.entity.OrderItem;
 import com.shop.order.entity.OrderStatus;
 import com.shop.order.mapper.OrderMapper;
 import com.shop.order.repository.OrderRepository;
 import com.shop.order.repository.OrderSpecifications;
+import com.shop.order.service.CouponLedger;
 import com.shop.order.service.OrderLifecycle;
 import com.shop.order.service.OrderService;
 import com.shop.order.util.OrderNumberGenerator;
@@ -36,6 +40,7 @@ import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.time.Clock;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -58,6 +63,7 @@ public class OrderServiceImpl implements OrderService {
     private final OrderRepository orderRepository;
     private final ProductClient productClient;
     private final OrderLifecycle orderLifecycle;
+    private final CouponLedger couponLedger;
     private final OrderNumberGenerator orderNumberGenerator;
     private final OrderMapper orderMapper;
     private final OrderProperties properties;
@@ -81,8 +87,7 @@ public class OrderServiceImpl implements OrderService {
             }
         }
 
-        Map<Long, Integer> quantities = mergeQuantities(request.items());
-        Map<Long, ProductSummary> products = fetchProducts(quantities.keySet());
+        PricedItems priced = priceItems(request.items());
 
         Order order = new Order();
         order.setOrderNumber(orderNumberGenerator.next());
@@ -92,31 +97,36 @@ public class OrderServiceImpl implements OrderService {
         order.setShippingAddress(orderMapper.toEntity(request.shippingAddress()));
         order.setNote(StringUtils.hasText(request.note()) ? request.note().trim() : null);
         order.setIdempotencyKey(key);
+        priced.items().forEach(order::addItem);
+        order.price(priced.subtotal(), properties.shipping().feeFor(priced.subtotal()));
+        order.setCurrency(priced.currency());
 
-        BigDecimal subtotal = BigDecimal.ZERO;
-        for (Map.Entry<Long, Integer> line : quantities.entrySet()) {
-            ProductSummary product = products.get(line.getKey());
-            OrderItem item = new OrderItem();
-            item.setProductId(product.id());
-            item.setSku(product.sku());
-            item.setProductName(product.name());
-            item.setThumbnailUrl(product.thumbnailUrl());
-            item.setUnitPrice(product.price());
-            item.setQuantity(line.getValue());
-            item.setLineTotal(product.price().multiply(BigDecimal.valueOf(line.getValue())));
-            order.addItem(item);
-            subtotal = subtotal.add(item.getLineTotal());
-        }
-        BigDecimal shippingFee = properties.shipping().feeFor(subtotal);
-        order.setSubtotal(subtotal);
-        order.setShippingFee(shippingFee);
-        order.setTotalAmount(subtotal.add(shippingFee));
-        order.setCurrency(singleCurrency(products.values()));
-
-        OrderResponse placed = transactionTemplate.execute(status -> orderMapper.toResponse(orderLifecycle.place(order)));
+        OrderResponse placed = transactionTemplate.execute(status -> {
+            Optional<Coupon> coupon = couponLedger.lockApplicable(request.couponCode(), customer.id(),
+                    order.getSubtotal());
+            coupon.ifPresent(applied -> order.applyCoupon(applied.getCode(), applied.discountFor(order.getSubtotal())));
+            Order saved = orderLifecycle.place(order);
+            coupon.ifPresent(applied -> couponLedger.redeem(applied, saved));
+            return orderMapper.toResponse(saved);
+        });
         log.info("Order {} placed by {}: {} product(s), total {} {}", placed.orderNumber(), customer.id(),
-                quantities.size(), placed.totalAmount(), placed.currency());
+                priced.items().size(), placed.totalAmount(), placed.currency());
         return new OrderPlacement(placed, true);
+    }
+
+    /**
+     * Not transactional as a whole: no database connection is held during the call to product-service.
+     */
+    @Override
+    public CouponPreviewResponse previewCoupon(AuthenticatedUser customer, CouponPreviewRequest request) {
+        PricedItems priced = priceItems(request.items());
+        BigDecimal subtotal = priced.subtotal();
+        Coupon coupon = couponLedger.findApplicable(request.code(), customer.id(), subtotal);
+        BigDecimal discount = coupon.discountFor(subtotal);
+        BigDecimal shippingFee = properties.shipping().feeFor(subtotal);
+        return new CouponPreviewResponse(coupon.getCode(), coupon.getDescription(), coupon.getDiscountType(),
+                coupon.getDiscountValue(), subtotal, discount, shippingFee,
+                subtotal.subtract(discount).add(shippingFee), priced.currency());
     }
 
     @Override
@@ -133,7 +143,7 @@ public class OrderServiceImpl implements OrderService {
     public OrderResponse getOrder(UUID orderId, AuthenticatedUser caller) {
         Order order = orderRepository.findById(orderId)
                 .filter(found -> caller.isAdmin() || found.isOwnedBy(caller.id()))
-                .orElseThrow(() -> new ResourceNotFoundException("Order", "id", orderId));
+                .orElseThrow(() -> ResourceNotFoundException.of("order.error.not-found"));
         return orderMapper.toResponse(order);
     }
 
@@ -142,15 +152,15 @@ public class OrderServiceImpl implements OrderService {
     public OrderResponse cancelOrder(UUID orderId, AuthenticatedUser caller, String reason) {
         Order order = orderRepository.findByIdForUpdate(orderId)
                 .filter(found -> caller.isAdmin() || found.isOwnedBy(caller.id()))
-                .orElseThrow(() -> new ResourceNotFoundException("Order", "id", orderId));
+                .orElseThrow(() -> ResourceNotFoundException.of("order.error.not-found"));
         if (!order.getStatus().isCancellable()) {
-            throw new BusinessException("Order %s is %s and can no longer be cancelled"
-                    .formatted(order.getOrderNumber(), order.getStatus()));
+            throw new BusinessException("order.error.not-cancellable", order.getOrderNumber(),
+                    order.getStatus().label());
         }
-        String who = order.isOwnedBy(caller.id()) ? "customer" : "administrator";
+        String key = order.isOwnedBy(caller.id()) ? "order.cancel-reason.by-customer" : "order.cancel-reason.by-admin";
         String fullReason = StringUtils.hasText(reason)
-                ? "Cancelled by %s: %s".formatted(who, reason.trim())
-                : "Cancelled by " + who;
+                ? orderLifecycle.message(key + "-with-reason", reason.trim())
+                : orderLifecycle.message(key);
         orderLifecycle.cancel(order, fullReason, caller.id());
         return orderMapper.toResponse(orderRepository.saveAndFlush(order));
     }
@@ -170,14 +180,43 @@ public class OrderServiceImpl implements OrderService {
     @Transactional
     public OrderResponse updateStatus(UUID orderId, UpdateOrderStatusRequest request, UUID adminId) {
         if (!ADMIN_TARGET_STATUSES.contains(request.status())) {
-            throw new BadRequestException("Status can only be set to SHIPPED or DELIVERED; "
-                    + "use the cancel endpoint to cancel an order");
+            throw new BadRequestException("order.error.admin-status");
         }
         Order order = orderRepository.findByIdForUpdate(orderId)
-                .orElseThrow(() -> new ResourceNotFoundException("Order", "id", orderId));
-        order.changeStatus(request.status(), request.note(), adminId, clock.instant());
+                .orElseThrow(() -> ResourceNotFoundException.of("order.error.not-found"));
+        if (request.status() == OrderStatus.DELIVERED) {
+            orderLifecycle.delivered(order, request.note(), adminId);
+        } else {
+            order.changeStatus(request.status(), request.note(), adminId, clock.instant());
+        }
         log.info("Order {} marked {} by {}", order.getOrderNumber(), request.status(), adminId);
         return orderMapper.toResponse(orderRepository.saveAndFlush(order));
+    }
+
+    /**
+     * Prices the requested items from the catalogue: one line per product (lines of the same product
+     * are merged), prices and product data copied from product-service.
+     */
+    private PricedItems priceItems(List<OrderItemRequest> requested) {
+        Map<Long, Integer> quantities = mergeQuantities(requested);
+        Map<Long, ProductSummary> products = fetchProducts(quantities.keySet());
+
+        List<OrderItem> items = new ArrayList<>(quantities.size());
+        BigDecimal subtotal = BigDecimal.ZERO;
+        for (Map.Entry<Long, Integer> line : quantities.entrySet()) {
+            ProductSummary product = products.get(line.getKey());
+            OrderItem item = new OrderItem();
+            item.setProductId(product.id());
+            item.setSku(product.sku());
+            item.setProductName(product.name());
+            item.setThumbnailUrl(product.thumbnailUrl());
+            item.setUnitPrice(product.price());
+            item.setQuantity(line.getValue());
+            item.setLineTotal(product.price().multiply(BigDecimal.valueOf(line.getValue())));
+            items.add(item);
+            subtotal = subtotal.add(item.getLineTotal());
+        }
+        return new PricedItems(items, subtotal, singleCurrency(products.values()));
     }
 
     /**
@@ -187,13 +226,12 @@ public class OrderServiceImpl implements OrderService {
         Map<Long, Integer> quantities = new LinkedHashMap<>();
         items.forEach(item -> quantities.merge(item.productId(), item.quantity(), Integer::sum));
         if (quantities.size() > properties.maxItems()) {
-            throw new BadRequestException("An order can contain at most %d different products"
-                    .formatted(properties.maxItems()));
+            throw new BadRequestException("order.error.too-many-products", properties.maxItems());
         }
         quantities.forEach((productId, quantity) -> {
             if (quantity > properties.maxQuantityPerItem()) {
-                throw new BadRequestException("At most %d units of product %d can be ordered"
-                        .formatted(properties.maxQuantityPerItem(), productId));
+                throw new BadRequestException("order.error.too-many-units", properties.maxQuantityPerItem(),
+                        productId);
             }
         });
         return quantities;
@@ -201,18 +239,19 @@ public class OrderServiceImpl implements OrderService {
 
     private Map<Long, ProductSummary> fetchProducts(Set<Long> productIds) {
         if (productIds.size() > ProductClient.MAX_BATCH_SIZE) {
-            throw new BadRequestException("Too many products in one order");
+            throw new BadRequestException("order.error.too-many-products-batch");
         }
         ApiResponse<List<ProductSummary>> response = productClient.getProductsByIds(List.copyOf(productIds));
         if (response == null || response.getData() == null) {
-            throw new ServiceUnavailableException("The product catalogue returned no data, please retry");
+            throw new ServiceUnavailableException("order.error.catalogue-no-data");
         }
         Map<Long, ProductSummary> products = response.getData().stream()
                 .filter(product -> product.price() != null && product.price().signum() > 0)
                 .collect(Collectors.toMap(ProductSummary::id, Function.identity(), (first, second) -> first));
         List<Long> unavailable = productIds.stream().filter(id -> !products.containsKey(id)).toList();
         if (!unavailable.isEmpty()) {
-            throw new BusinessException("These products are not available for sale: " + unavailable);
+            throw new BusinessException("order.error.products-unavailable",
+                    unavailable.stream().map(String::valueOf).collect(Collectors.joining(", ")));
         }
         return products;
     }
@@ -221,7 +260,7 @@ public class OrderServiceImpl implements OrderService {
         Set<String> currencies = new HashSet<>();
         products.forEach(product -> currencies.add(product.currency()));
         if (currencies.size() != 1 || currencies.contains(null)) {
-            throw new BusinessException("Products priced in different currencies cannot be ordered together");
+            throw new BusinessException("order.error.mixed-currencies");
         }
         return currencies.iterator().next();
     }
@@ -232,8 +271,14 @@ public class OrderServiceImpl implements OrderService {
         }
         String key = idempotencyKey.trim();
         if (!IDEMPOTENCY_KEY.matcher(key).matches()) {
-            throw new BadRequestException("Idempotency-Key must be 8 to 100 letters, digits, '-' or '_'");
+            throw new BadRequestException("order.error.idempotency-key");
         }
         return key;
+    }
+
+    /**
+     * @param items lines not attached to an order yet
+     */
+    private record PricedItems(List<OrderItem> items, BigDecimal subtotal, String currency) {
     }
 }

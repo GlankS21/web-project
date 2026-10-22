@@ -22,6 +22,7 @@ public final class MessagingConstants {
     public static final String ORDER_PAYMENT_REQUESTED_KEY = "order.payment-requested";
     public static final String ORDER_CONFIRMED_KEY = "order.confirmed";
     public static final String ORDER_CANCELLED_KEY = "order.cancelled";
+    public static final String ORDER_DELIVERED_KEY = "order.delivered";
 
     // Routing keys published by inventory-service
     public static final String STOCK_RESERVED_KEY = "stock.reserved";
@@ -31,9 +32,11 @@ public final class MessagingConstants {
     // Routing keys published by payment-service
     public static final String PAYMENT_SUCCEEDED_KEY = "payment.succeeded";
     public static final String PAYMENT_FAILED_KEY = "payment.failed";
+    public static final String PAYMENT_REFUNDED_KEY = "payment.refunded";
 
     // Routing keys published by auth-service
     public static final String USER_REGISTERED_KEY = "user.registered";
+    public static final String USER_PASSWORD_RESET_REQUESTED_KEY = "user.password-reset-requested";
 
     // Routing keys published by product-service
     public static final String PRODUCT_CREATED_KEY = "product.created";
@@ -49,6 +52,7 @@ public final class MessagingConstants {
     public static final String ORDER_STOCK_RESERVATION_FAILED_QUEUE = "order.stock-reservation-failed";
     public static final String ORDER_PAYMENT_SUCCEEDED_QUEUE = "order.payment-succeeded";
     public static final String ORDER_PAYMENT_FAILED_QUEUE = "order.payment-failed";
+    public static final String ORDER_PAYMENT_REFUNDED_QUEUE = "order.payment-refunded";
 
     // Queues consumed by payment-service
     public static final String PAYMENT_PAYMENT_REQUESTED_QUEUE = "payment.payment-requested";
@@ -56,6 +60,9 @@ public final class MessagingConstants {
 
     // Queues consumed by cart-service
     public static final String CART_ORDER_CREATED_QUEUE = "cart.order-created";
+
+    // Queues consumed by product-service
+    public static final String PRODUCT_ORDER_DELIVERED_QUEUE = "product.order-delivered";
 
     // Queues consumed by user-service
     public static final String USER_USER_REGISTERED_QUEUE = "user.user-registered";

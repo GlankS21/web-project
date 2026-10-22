@@ -1,55 +1,56 @@
 # cart-service
 
-Giỏ hàng của khách đã đăng nhập. Port mặc định: **8085**. Database: `cart_db`.
+Корзина авторизованного покупателя. Порт по умолчанию: **8085**. База данных: `cart_db`.
 
-## Hoạt động
+## Работа
 
-- Mỗi khách một giỏ; mỗi dòng là một sản phẩm (unique giỏ + sản phẩm). Thêm sản phẩm đã có thì cộng dồn số lượng.
-- Khi thêm/sửa dòng: sản phẩm phải đang bán (product-service) và số lượng không vượt tồn kho còn bán được
-  (inventory-service). Nếu inventory-service không phản hồi, số lượng vẫn được nhận — Saga đặt hàng là
-  bước kiểm tra cuối cùng.
-- Dòng giỏ lưu ảnh chụp (tên, SKU, ảnh, giá) tại lần thay đổi gần nhất. Mỗi lần đọc giỏ, giá và tồn kho
-  được lấy **lại** từ product-service/inventory-service:
+- У каждого покупателя одна корзина; каждая строка — один товар (unique корзина + товар). При добавлении уже имеющегося
+  товара количество суммируется.
+- При добавлении/изменении строки товар должен быть в продаже (product-service), а количество не должно превышать
+  доступный для продажи остаток (inventory-service). Если inventory-service не отвечает, количество всё равно
+  принимается — окончательной проверкой служит Saga оформления заказа.
+- Строка корзины хранит снимок (название, SKU, изображение, цена) на момент последнего изменения. При каждом чтении
+  корзины цена и остаток **заново** запрашиваются у product-service/inventory-service:
 
-| Trường dòng | Ý nghĩa |
+| Поле строки | Значение |
 |---|---|
-| `unitPrice` | Giá hiện tại (giá đã lưu nếu product-service không phản hồi) |
-| `priceChanged` | Giá khác với lúc khách thêm/sửa dòng |
-| `availableQuantity` | Còn bán được, `null` nếu không rõ |
-| `status` | `AVAILABLE`, `INSUFFICIENT_STOCK`, `OUT_OF_STOCK`, `UNAVAILABLE` (ngừng bán), `UNKNOWN` |
+| `unitPrice` | Текущая цена (сохранённая цена, если product-service не отвечает) |
+| `priceChanged` | Цена отличается от той, что была при добавлении/изменении строки покупателем |
+| `availableQuantity` | Доступно для продажи, `null`, если неизвестно |
+| `status` | `AVAILABLE`, `INSUFFICIENT_STOCK`, `OUT_OF_STOCK`, `UNAVAILABLE` (снят с продажи), `UNKNOWN` |
 
-Cả giỏ có `subtotal`, `totalQuantity`, `checkoutReady` (không dòng nào bị chặn) và `pricesUpToDate`.
+Корзина целиком содержит `subtotal` (в RUB), `totalQuantity`, `checkoutReady` (ни одна строка не заблокирована) и `pricesUpToDate`.
 
-- Khi nhận `order.created` (queue `cart.order-created`), các sản phẩm vừa đặt bị xoá khỏi giỏ.
-  Xoá nguyên dòng nên xử lý lặp lại vẫn an toàn.
-- Feign gọi ngoài transaction; thay đổi giỏ khoá dòng giỏ (`SELECT … FOR UPDATE`) để hai request song song
-  không ghi đè nhau.
+- При получении `order.created` (очередь `cart.order-created`) только что заказанные товары удаляются из корзины.
+  Строки удаляются целиком, поэтому повторная обработка безопасна.
+- Feign вызывается вне транзакции; изменение корзины блокирует строку корзины (`SELECT … FOR UPDATE`), чтобы два
+  параллельных запроса не перезаписали друг друга.
 
 ## API
 
-| Method | Đường dẫn | Mô tả |
+| Method | Путь | Описание |
 |---|---|---|
-| GET | `/api/cart` | Giỏ hiện tại (đã định giá lại) |
-| POST | `/api/cart/items` | `{"productId":7,"quantity":1}` — thêm/cộng dồn |
-| PUT | `/api/cart/items/{productId}` | `{"quantity":3}` — đặt lại số lượng |
-| DELETE | `/api/cart/items/{productId}` | Xoá một dòng |
-| DELETE | `/api/cart` | Xoá cả giỏ |
+| GET | `/api/cart` | Текущая корзина (с пересчётом цен) |
+| POST | `/api/cart/items` | `{"productId":7,"quantity":1}` — добавить/увеличить количество |
+| PUT | `/api/cart/items/{productId}` | `{"quantity":3}` — задать количество |
+| DELETE | `/api/cart/items/{productId}` | Удалить строку |
+| DELETE | `/api/cart` | Очистить корзину |
 
-Tất cả cần đăng nhập. Lỗi: sản phẩm ngừng bán / vượt tồn kho / giỏ đầy → `422`; vượt số lượng tối đa mỗi
-dòng → `400`; product-service không phản hồi khi thêm/sửa → `503`.
+Все требуют входа. Ошибки: товар снят с продажи / превышен остаток / корзина заполнена → `422`; превышено максимальное
+количество в строке → `400`; product-service не отвечает при добавлении/изменении → `503`. Тексты ошибок — на русском.
 
-## Biến môi trường
+## Переменные окружения
 
-`CONFIG_SERVER_*`, `EUREKA_*`, `RABBITMQ_*`, `JWT_SECRET`, `CART_DB_PASSWORD`; tuỳ chọn: `CART_SERVICE_PORT`.
-Giới hạn `app.cart.max-items` (50), `app.cart.max-quantity-per-item` (99), timeout Feign và circuit breaker
-nằm trong `config-repo/cart-service.yml`.
+`CONFIG_SERVER_*`, `EUREKA_*`, `RABBITMQ_*`, `JWT_SECRET`, `CART_DB_PASSWORD`; необязательные: `CART_SERVICE_PORT`.
+Лимиты `app.cart.max-items` (50), `app.cart.max-quantity-per-item` (99), timeout Feign и circuit breaker
+находятся в `config-repo/cart-service.yml`.
 
-## Test
+## Тесты
 
 ```bash
 cd backend
 ./mvnw -pl cart-service test
 ```
 
-Testcontainers: `CartIntegrationTest` — API giỏ hàng với giới hạn tồn kho, định giá lại khi giá đổi,
-hiển thị giỏ khi product/inventory-service ngừng, xoá sản phẩm khi nhận `order.created`.
+Testcontainers: `CartIntegrationTest` — API корзины с ограничением по остаткам, пересчёт при изменении цены,
+отображение корзины при недоступности product/inventory-service, удаление товаров при получении `order.created`.

@@ -49,7 +49,8 @@ class TokenServiceImplTest {
     @BeforeEach
     void setUp() {
         tokenService = new TokenServiceImpl(refreshTokenRepository, jwtTokenProvider, new OpaqueTokenGenerator(),
-                new AuthProperties(Duration.ofMinutes(15), Duration.ofDays(7)), Clock.fixed(NOW, ZoneOffset.UTC));
+                new AuthProperties(Duration.ofMinutes(15), Duration.ofDays(7), Duration.ofMinutes(30),
+                        Duration.ofMinutes(1)), Clock.fixed(NOW, ZoneOffset.UTC));
         account = UserAccount.builder().id(UUID.randomUUID()).email("john@example.com").enabled(true).build();
     }
 
@@ -106,7 +107,7 @@ class TokenServiceImplTest {
 
         assertThatThrownBy(() -> tokenService.rotate("expired-token"))
                 .isInstanceOf(UnauthorizedException.class)
-                .hasMessageContaining("expired");
+                .hasMessage(TokenServiceImpl.REFRESH_TOKEN_EXPIRED);
         verify(refreshTokenRepository, never()).save(any());
     }
 

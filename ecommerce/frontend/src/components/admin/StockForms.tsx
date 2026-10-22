@@ -1,10 +1,12 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
+import { useToast } from "@/components/toast";
 import { Alert, Button, Field } from "@/components/ui";
 import { api } from "@/lib/client/api";
-import { errorMessage } from "@/lib/errors";
+import { useErrorMessage } from "@/lib/client/use-error-message";
 import type { InventoryItem } from "@/lib/types";
 
 type Result = { form: "adjust" | "set"; ok: true } | { form: "adjust" | "set"; ok: false; message: string } | null;
@@ -14,7 +16,10 @@ type Result = { form: "adjust" | "set"; ok: true } | { form: "adjust" | "set"; o
  * quantity, or a stock count that sets the physical quantity.
  */
 export function StockForms({ item }: { item: InventoryItem }) {
+  const t = useTranslations("stockForms");
+  const errorMessage = useErrorMessage();
   const router = useRouter();
+  const toast = useToast();
   const [busy, setBusy] = useState<"adjust" | "set" | null>(null);
   const [result, setResult] = useState<Result>(null);
 
@@ -25,6 +30,7 @@ export function StockForms({ item }: { item: InventoryItem }) {
       await action();
       target.reset();
       setResult({ form, ok: true });
+      toast.success(t("saved"));
       router.refresh();
     } catch (caught) {
       setResult({ form, ok: false, message: errorMessage(caught) });
@@ -38,7 +44,7 @@ export function StockForms({ item }: { item: InventoryItem }) {
     const form = new FormData(event.currentTarget);
     const quantityChange = Number(form.get("quantityChange"));
     if (!Number.isInteger(quantityChange) || quantityChange === 0) {
-      setResult({ form: "adjust", ok: false, message: "Số lượng thay đổi phải là số nguyên khác 0." });
+      setResult({ form: "adjust", ok: false, message: t("nonZero") });
       return;
     }
     const body = { quantityChange, reason: String(form.get("reason") ?? "").trim() };
@@ -58,17 +64,16 @@ export function StockForms({ item }: { item: InventoryItem }) {
   };
 
   const feedback = (form: "adjust" | "set") =>
-    result?.form === form &&
-    (result.ok ? <Alert tone="success">Đã cập nhật tồn kho.</Alert> : <Alert tone="danger">{result.message}</Alert>);
+    result?.form === form && !result.ok && <Alert tone="danger">{result.message}</Alert>;
 
   return (
     <div className="grid gap-6 lg:grid-cols-2">
       <form onSubmit={adjust} className="card flex flex-col gap-4 p-5">
         <div>
-          <h2 className="font-semibold text-slate-900">Nhập / xuất kho</h2>
-          <p className="text-xs text-slate-500">Số dương khi nhập hàng, số âm khi hàng hỏng, thất lạc.</p>
+          <h2 className="font-semibold text-slate-900">{t("adjustTitle")}</h2>
+          <p className="text-xs text-slate-500">{t("adjustHint")}</p>
         </div>
-        <Field label="Số lượng thay đổi" htmlFor="quantityChange" required>
+        <Field label={t("quantityChange")} htmlFor="quantityChange" required>
           <input
             id="quantityChange"
             name="quantityChange"
@@ -80,26 +85,33 @@ export function StockForms({ item }: { item: InventoryItem }) {
             className="input"
           />
         </Field>
-        <Field label="Lý do" htmlFor="adjust-reason" required>
-          <input id="adjust-reason" name="reason" required maxLength={255} placeholder="Nhập theo phiếu PO-..." className="input" />
+        <Field label={t("reason")} htmlFor="adjust-reason" required>
+          <input
+            id="adjust-reason"
+            name="reason"
+            required
+            maxLength={255}
+            placeholder={t("adjustReasonPlaceholder")}
+            className="input"
+          />
         </Field>
         {feedback("adjust")}
         <div>
           <Button type="submit" loading={busy === "adjust"} disabled={busy !== null}>
-            Ghi nhận
+            {t("adjustSubmit")}
           </Button>
         </div>
       </form>
 
       <form onSubmit={set} className="card flex flex-col gap-4 p-5">
         <div>
-          <h2 className="font-semibold text-slate-900">Kiểm kê</h2>
+          <h2 className="font-semibold text-slate-900">{t("countTitle")}</h2>
           <p className="text-xs text-slate-500">
-            Đặt tồn thực tế theo số đếm được; không thấp hơn số đang giữ ({item.quantityReserved}).
+            {t("countHint", { reserved: item.quantityReserved })}
           </p>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Tồn thực tế" htmlFor="quantityOnHand" required>
+          <Field label={t("onHand")} htmlFor="quantityOnHand" required>
             <input
               id="quantityOnHand"
               name="quantityOnHand"
@@ -112,7 +124,7 @@ export function StockForms({ item }: { item: InventoryItem }) {
               className="input"
             />
           </Field>
-          <Field label="Ngưỡng cảnh báo" htmlFor="lowStockThreshold">
+          <Field label={t("threshold")} htmlFor="lowStockThreshold">
             <input
               id="lowStockThreshold"
               name="lowStockThreshold"
@@ -125,13 +137,13 @@ export function StockForms({ item }: { item: InventoryItem }) {
             />
           </Field>
         </div>
-        <Field label="Lý do" htmlFor="set-reason">
-          <input id="set-reason" name="reason" maxLength={255} placeholder="Kiểm kê tháng..." className="input" />
+        <Field label={t("reason")} htmlFor="set-reason">
+          <input id="set-reason" name="reason" maxLength={255} placeholder={t("countReasonPlaceholder")} className="input" />
         </Field>
         {feedback("set")}
         <div>
           <Button type="submit" variant="secondary" loading={busy === "set"} disabled={busy !== null}>
-            Lưu kiểm kê
+            {t("countSubmit")}
           </Button>
         </div>
       </form>

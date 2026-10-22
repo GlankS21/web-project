@@ -21,6 +21,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ProductCatalog {
 
+    static final String CATALOGUE_NO_DATA = "cart.error.catalogue-no-data";
+
     private final ProductClient productClient;
     private final InventoryClient inventoryClient;
 
@@ -35,7 +37,7 @@ public class ProductCatalog {
         }
         List<ProductSummary> products = data(productClient.getProductsByIds(List.copyOf(productIds)));
         if (products == null) {
-            throw new ServiceUnavailableException("The product catalogue returned no data, please retry");
+            throw new ServiceUnavailableException(CATALOGUE_NO_DATA);
         }
         return products.stream()
                 .filter(product -> product.price() != null && product.price().signum() > 0)

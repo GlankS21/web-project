@@ -94,7 +94,7 @@ class CartIntegrationTest {
 
     @BeforeEach
     void services() {
-        catalogue("24990000");
+        catalogue("124990");
         when(inventoryClient.getAvailability(anyList())).thenReturn(ApiResponse.success(List.of(
                 new StockAvailability(7L, 3, true), new StockAvailability(19L, 50, true),
                 new StockAvailability(23L, 0, false))));
@@ -107,30 +107,34 @@ class CartIntegrationTest {
                 .andExpect(jsonPath("$.data.items[0].status").value("AVAILABLE"));
         add(7, 1).andExpect(status().isOk()).andExpect(jsonPath("$.data.items[0].quantity").value(3));
         add(7, 1).andExpect(status().isUnprocessableEntity())
-                .andExpect(jsonPath("$.message").value("Only 3 unit(s) of MacBook Air M2 are available"));
+                .andExpect(jsonPath("$.message").value("Товара «MacBook Air M2» в наличии только 3 штуки"));
         add(23, 1).andExpect(status().isUnprocessableEntity())
-                .andExpect(jsonPath("$.message").value("USB hub is out of stock"));
-        add(99, 1).andExpect(status().isUnprocessableEntity());
-        add(19, 11).andExpect(status().isBadRequest());
+                .andExpect(jsonPath("$.message").value("Товара «USB-концентратор» нет в наличии"));
+        add(99, 1).andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.message").value("Этот товар сейчас не продаётся"));
+        add(19, 11).andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Одного товара можно положить в корзину не больше 10 штук"));
 
         mockMvc.perform(put("/api/cart/items/19").header(HttpHeaders.AUTHORIZATION, token())
                         .contentType(MediaType.APPLICATION_JSON).content("{\"quantity\":2}"))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.message").value("Этого товара нет в корзине"));
         add(19, 1).andExpect(status().isOk());
         mockMvc.perform(put("/api/cart/items/19").header(HttpHeaders.AUTHORIZATION, token())
                         .contentType(MediaType.APPLICATION_JSON).content("{\"quantity\":4}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.totalQuantity").value(7))
-                .andExpect(jsonPath("$.data.subtotal").value(75570000))
+                .andExpect(jsonPath("$.data.subtotal").value(380930))
+                .andExpect(jsonPath("$.data.currency").value("RUB"))
                 .andExpect(jsonPath("$.data.checkoutReady").value(true));
 
         // The price drops after the line was added; the stock of product 7 goes down to 1
-        catalogue("22990000");
+        catalogue("119990");
         when(inventoryClient.getAvailability(anyList())).thenReturn(ApiResponse.success(List.of(
                 new StockAvailability(7L, 1, true), new StockAvailability(19L, 50, true))));
         mockMvc.perform(get("/api/cart").header(HttpHeaders.AUTHORIZATION, token()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.items[0].unitPrice").value(22990000))
+                .andExpect(jsonPath("$.data.items[0].unitPrice").value(119990))
                 .andExpect(jsonPath("$.data.items[0].priceChanged").value(true))
                 .andExpect(jsonPath("$.data.items[0].status").value("INSUFFICIENT_STOCK"))
                 .andExpect(jsonPath("$.data.checkoutReady").value(false));
@@ -151,16 +155,17 @@ class CartIntegrationTest {
         add(19, 2).andExpect(status().isOk());
 
         when(productClient.getProductsByIds(anyList()))
-                .thenThrow(new ServiceUnavailableException("product-service is unavailable"));
+                .thenThrow(new ServiceUnavailableException("cart.error.catalogue-unavailable"));
         when(inventoryClient.getAvailability(anyList()))
-                .thenThrow(new ServiceUnavailableException("inventory-service is unavailable"));
+                .thenThrow(new ServiceUnavailableException("cart.error.stock-unavailable"));
 
         mockMvc.perform(get("/api/cart").header(HttpHeaders.AUTHORIZATION, token()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.items[0].unitPrice").value(150000))
+                .andExpect(jsonPath("$.data.items[0].unitPrice").value(1490))
                 .andExpect(jsonPath("$.data.items[0].status").value("UNKNOWN"))
                 .andExpect(jsonPath("$.data.pricesUpToDate").value(false));
-        add(7, 1).andExpect(status().isServiceUnavailable());
+        add(7, 1).andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.message").value("Каталог товаров временно недоступен, повторите попытку позже"));
     }
 
     @Test
@@ -171,8 +176,8 @@ class CartIntegrationTest {
         rabbitTemplate.convertAndSend(MessagingConstants.ORDER_EXCHANGE, MessagingConstants.ORDER_CREATED_KEY,
                 new OrderCreatedEvent(UUID.randomUUID(), Instant.now(), UUID.randomUUID(), "ORD-20261021-ABCDEF",
                         customerId, "jane@example.com",
-                        List.of(new OrderItemPayload(7L, "LAP-MBA-M2", "MacBook Air M2", 1, new BigDecimal("24990000"))),
-                        new BigDecimal("24990000"), "VND"));
+                        List.of(new OrderItemPayload(7L, "LAP-MBA-M2", "MacBook Air M2", 1, new BigDecimal("124990"))),
+                        new BigDecimal("124990"), "RUB"));
 
         long deadline = System.currentTimeMillis() + 15_000;
         while (cartRepository.findByUserId(customerId).orElseThrow().getItems().size() != 1) {
@@ -192,11 +197,11 @@ class CartIntegrationTest {
     private void catalogue(String macBookPrice) {
         // product 99 is not sold: it is missing from the response
         when(productClient.getProductsByIds(anyList())).thenReturn(ApiResponse.success(List.of(
-                new ProductSummary(7L, "LAP-MBA-M2", "MacBook Air M2", new BigDecimal(macBookPrice), "VND",
+                new ProductSummary(7L, "LAP-MBA-M2", "MacBook Air M2", new BigDecimal(macBookPrice), "RUB",
                         "https://img/7.jpg", "ACTIVE"),
-                new ProductSummary(19L, "ACC-UGR-C2C", "USB-C cable", new BigDecimal("150000"), "VND", null,
+                new ProductSummary(19L, "ACC-UGR-C2C", "Кабель USB-C", new BigDecimal("1490"), "RUB", null,
                         "ACTIVE"),
-                new ProductSummary(23L, "ACC-HUB", "USB hub", new BigDecimal("390000"), "VND", null, "ACTIVE"))));
+                new ProductSummary(23L, "ACC-HUB", "USB-концентратор", new BigDecimal("3990"), "RUB", null, "ACTIVE"))));
     }
 
     private String token() {

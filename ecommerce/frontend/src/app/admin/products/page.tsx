@@ -1,16 +1,19 @@
 import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
 import Link from "next/link";
 import { ProductStatusSelect } from "@/components/admin/ProductStatusSelect";
 import { Pagination, pageIndex } from "@/components/Pagination";
 import { ButtonLink, PageTitle, Thumb } from "@/components/ui";
-import { formatMoney, PRODUCT_STATUS } from "@/lib/format";
+import { formatMoney, PRODUCT_STATUS_TONE } from "@/lib/format";
 import { apiGet, query } from "@/lib/server/data";
 import { oneOf, param, positiveInt, type SearchParams } from "@/lib/search-params";
 import type { Category, PageResponse, ProductStatus, ProductSummary } from "@/lib/types";
 
-export const metadata: Metadata = { title: "Sản phẩm" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getTranslations("adminProducts"))("title") };
+}
 
-const STATUSES = Object.keys(PRODUCT_STATUS) as ProductStatus[];
+const STATUSES = Object.keys(PRODUCT_STATUS_TONE) as ProductStatus[];
 
 export default async function AdminProductsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const params = await searchParams;
@@ -19,24 +22,33 @@ export default async function AdminProductsPage({ searchParams }: { searchParams
   const categoryId = positiveInt(param(params, "categoryId"));
   const page = pageIndex(param(params, "page"));
 
-  const [products, categories] = await Promise.all([
+  const [products, categories, t, tStatus] = await Promise.all([
     apiGet<PageResponse<ProductSummary>>(
       `/api/products${query({ keyword, status, categoryId, page, size: 20, sort: "createdAt,desc" })}`,
       { auth: true },
     ),
     apiGet<Category[]>("/api/categories").catch(() => [] as Category[]),
+    getTranslations("adminProducts"),
+    getTranslations("productStatus"),
   ]);
 
   return (
     <>
-      <PageTitle actions={<ButtonLink href="/admin/products/new">Thêm sản phẩm</ButtonLink>}>Sản phẩm</PageTitle>
+      <PageTitle actions={<ButtonLink href="/admin/products/new">{t("new")}</ButtonLink>}>{t("title")}</PageTitle>
       <form method="get" className="mb-4 flex flex-wrap gap-2">
-        <input name="keyword" defaultValue={keyword} maxLength={100} placeholder="Tên, SKU..." className="input max-w-xs" aria-label="Tìm sản phẩm" />
-        <select name="categoryId" defaultValue={categoryId ?? ""} className="input w-auto" aria-label="Danh mục">
-          <option value="">Mọi danh mục</option>
+        <input
+          name="keyword"
+          defaultValue={keyword}
+          maxLength={100}
+          placeholder={t("searchPlaceholder")}
+          className="input max-w-xs"
+          aria-label={t("searchLabel")}
+        />
+        <select name="categoryId" defaultValue={categoryId ?? ""} className="input w-auto" aria-label={t("category")}>
+          <option value="">{t("allCategories")}</option>
           {categories.map((root) => (
             <optgroup key={root.id} label={root.name}>
-              <option value={root.id}>{root.name} (tất cả)</option>
+              <option value={root.id}>{t("wholeCategory", { name: root.name })}</option>
               {root.children.map((child) => (
                 <option key={child.id} value={child.id}>
                   {child.name}
@@ -45,27 +57,27 @@ export default async function AdminProductsPage({ searchParams }: { searchParams
             </optgroup>
           ))}
         </select>
-        <select name="status" defaultValue={status ?? ""} className="input w-auto" aria-label="Trạng thái">
-          <option value="">Mọi trạng thái</option>
+        <select name="status" defaultValue={status ?? ""} className="input w-auto" aria-label={t("status")}>
+          <option value="">{t("allStatuses")}</option>
           {STATUSES.map((value) => (
             <option key={value} value={value}>
-              {PRODUCT_STATUS[value].label}
+              {tStatus(value)}
             </option>
           ))}
         </select>
         <button type="submit" className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700">
-          Lọc
+          {t("filter")}
         </button>
       </form>
-      <p className="mb-2 text-sm text-slate-500">{products.totalElements} sản phẩm</p>
+      <p className="mb-2 text-sm text-slate-500">{t("count", { count: products.totalElements })}</p>
       <div className="card overflow-x-auto">
         <table className="table">
           <thead>
             <tr>
-              <th>Sản phẩm</th>
-              <th>Danh mục</th>
-              <th className="text-right">Giá</th>
-              <th>Trạng thái</th>
+              <th>{t("product")}</th>
+              <th>{t("category")}</th>
+              <th className="text-right">{t("price")}</th>
+              <th>{t("status")}</th>
               <th />
             </tr>
           </thead>
@@ -90,16 +102,21 @@ export default async function AdminProductsPage({ searchParams }: { searchParams
                 </td>
                 <td className="text-right whitespace-nowrap">
                   <Link href={`/admin/inventory/${product.id}`} className="link text-sm">
-                    Tồn kho
+                    {t("inventory")}
                   </Link>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
-        {products.content.length === 0 && <p className="p-4 text-sm text-slate-500">Không có sản phẩm.</p>}
+        {products.content.length === 0 && <p className="p-4 text-sm text-slate-500">{t("empty")}</p>}
       </div>
-      <Pagination page={products.page} totalPages={products.totalPages} basePath="/admin/products" params={{ keyword, status, categoryId }} />
+      <Pagination
+        page={products.page}
+        totalPages={products.totalPages}
+        basePath="/admin/products"
+        params={{ keyword, status, categoryId }}
+      />
     </>
   );
 }

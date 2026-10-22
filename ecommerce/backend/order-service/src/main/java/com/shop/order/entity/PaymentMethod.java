@@ -9,7 +9,6 @@ public enum PaymentMethod {
     /** Cash on delivery: accepted immediately, collected by the courier. */
     COD,
 
-    CARD,
-
-    E_WALLET
+    /** Paid on the page of the payment provider (bank card, SBP, YooMoney...), chosen there by the customer. */
+    ONLINE
 }

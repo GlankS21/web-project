@@ -71,6 +71,16 @@ public class Product extends AuditableEntity {
     @Column(nullable = false, length = 20)
     private ProductStatus status;
 
+    /**
+     * Mean review rating rounded to one decimal, 0 without reviews. Maintained by the review service
+     * with a bulk update (see {@code ProductRepository#updateRating}), never through this entity.
+     */
+    @Column(name = "rating_average", nullable = false, precision = 2, scale = 1, insertable = false, updatable = false)
+    private BigDecimal ratingAverage = BigDecimal.ZERO;
+
+    @Column(name = "rating_count", nullable = false, insertable = false, updatable = false)
+    private int ratingCount;
+
     /** Batch-fetched so that a page of products loads its thumbnails in one extra query. */
     @BatchSize(size = 100)
     @OrderBy("sortOrder ASC, id ASC")

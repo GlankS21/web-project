@@ -9,7 +9,7 @@ function token(payload: Record<string, unknown>): string {
 const NOW = 1_800_000_000;
 const ACCESS = {
   sub: "user-1",
-  email: "nguyễn@example.com",
+  email: "дмитрий@пример.рф",
   roles: ["ROLE_CUSTOMER", "ROLE_ADMIN"],
   exp: NOW + 600,
   token_type: "access",
@@ -19,7 +19,7 @@ describe("decodeAccessToken", () => {
   it("reads the claims of an access token, including non-ASCII text", () => {
     expect(decodeAccessToken(token(ACCESS))).toEqual({
       userId: "user-1",
-      email: "nguyễn@example.com",
+      email: "дмитрий@пример.рф",
       roles: ["ROLE_CUSTOMER", "ROLE_ADMIN"],
       expiresAt: NOW + 600,
     });

@@ -9,21 +9,21 @@ import jakarta.validation.constraints.Size;
 
 public record RegisterRequest(
 
-        @Schema(example = "john.doe@example.com")
+        @Schema(description = "E-mail аккаунта", example = "ivan.petrov@example.ru")
         @NotBlank @Email @Size(max = 255)
         String email,
 
-        @Schema(example = "Secret123")
+        @Schema(description = "Пароль: от 8 до 72 символов, хотя бы одна буква и одна цифра", example = "Secret123")
         @NotBlank
         @Size(min = PasswordPolicy.MIN_LENGTH, max = PasswordPolicy.MAX_LENGTH)
         @Pattern(regexp = PasswordPolicy.PATTERN, message = PasswordPolicy.PATTERN_MESSAGE)
         String password,
 
-        @Schema(example = "John")
+        @Schema(description = "Имя", example = "Иван")
         @NotBlank @Size(max = 100)
         String firstName,
 
-        @Schema(example = "Doe")
+        @Schema(description = "Фамилия", example = "Петров")
         @NotBlank @Size(max = 100)
         String lastName
 ) {

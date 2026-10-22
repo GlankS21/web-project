@@ -8,11 +8,13 @@ import jakarta.validation.constraints.Size;
 
 public record ProductImageRequest(
 
-        @Schema(example = "https://picsum.photos/seed/phone/800/800")
+        @Schema(description = "Абсолютный адрес http(s) или адрес, полученный от POST /api/products/images",
+                example = "https://picsum.photos/seed/phone/800/800")
         @NotBlank @Size(max = 1000)
-        @Pattern(regexp = ValidationPatterns.HTTP_URL, message = ValidationPatterns.HTTP_URL_MESSAGE)
+        @Pattern(regexp = ValidationPatterns.IMAGE_URL, message = ValidationPatterns.IMAGE_URL_MESSAGE)
         String url,
 
+        @Schema(description = "Альтернативный текст изображения", example = "Смартфон Apple iPhone 15 128 ГБ, вид спереди")
         @Size(max = 255)
         String altText
 ) {

@@ -1,11 +1,13 @@
 package com.shop.common.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.shop.common.autoconfigure.CommonMessagesAutoConfiguration;
 import com.shop.common.dto.ErrorResponse;
 import com.shop.common.exception.ErrorCode;
 import com.shop.common.util.CorrelationIdUtils;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.context.MessageSource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -17,13 +19,19 @@ import java.io.IOException;
 
 /**
  * Writes a platform {@link ErrorResponse} (401) when a request is unauthenticated or carries an invalid token.
+ * The message is resolved in {@link CommonMessagesAutoConfiguration#DEFAULT_LOCALE}: security filters run
+ * before the dispatcher sets up the request locale.
  */
 public class RestAuthenticationEntryPoint implements AuthenticationEntryPoint {
 
-    private final ObjectMapper objectMapper;
+    static final String INVALID_TOKEN_KEY = "error.token.invalid";
 
-    public RestAuthenticationEntryPoint(ObjectMapper objectMapper) {
+    private final ObjectMapper objectMapper;
+    private final MessageSource messageSource;
+
+    public RestAuthenticationEntryPoint(ObjectMapper objectMapper, MessageSource messageSource) {
         this.objectMapper = objectMapper;
+        this.messageSource = messageSource;
     }
 
     @Override
@@ -31,8 +39,10 @@ public class RestAuthenticationEntryPoint implements AuthenticationEntryPoint {
                          HttpServletResponse response,
                          AuthenticationException authException) throws IOException {
         String message = authException instanceof InvalidBearerTokenException
-                ? "Access token is invalid or expired"
-                : ErrorCode.UNAUTHORIZED.getDefaultMessage();
+                ? messageSource.getMessage(INVALID_TOKEN_KEY, null, "Access token is invalid or expired",
+                        CommonMessagesAutoConfiguration.DEFAULT_LOCALE)
+                : messageSource.getMessage("error." + ErrorCode.UNAUTHORIZED.name(), null,
+                        ErrorCode.UNAUTHORIZED.getDefaultMessage(), CommonMessagesAutoConfiguration.DEFAULT_LOCALE);
         ErrorResponse body = ErrorResponse.builder()
                 .status(HttpStatus.UNAUTHORIZED.value())
                 .error(HttpStatus.UNAUTHORIZED.getReasonPhrase())

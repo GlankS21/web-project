@@ -5,7 +5,10 @@ package com.shop.common.exception;
  */
 public class BadRequestException extends BaseException {
 
-    public BadRequestException(String message) {
-        super(ErrorCode.BAD_REQUEST, message);
+    /**
+     * @param message key of the message (or literal text) and its arguments
+     */
+    public BadRequestException(String message, Object... args) {
+        super(ErrorCode.BAD_REQUEST, message, args);
     }
 }

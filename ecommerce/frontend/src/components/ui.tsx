@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import type { ButtonHTMLAttributes, ComponentProps, ReactNode } from "react";
 import type { Tone } from "@/lib/format";
 
@@ -147,11 +148,16 @@ export function PageTitle({ children, actions }: { children: ReactNode; actions?
 
 /** Thumbnail with a neutral placeholder when the product has no image. */
 export function Thumb({ src, alt, className = "h-16 w-16" }: { src: string | null | undefined; alt: string; className?: string }) {
+  const t = useTranslations("common");
   return src ? (
     <img src={src} alt={alt} loading="lazy" className={`${className} shrink-0 rounded-lg border border-slate-200 bg-white object-cover`} />
   ) : (
-    <div className={`${className} flex shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-100 text-xs text-slate-400`}>
-      Không ảnh
+    <div
+      role="img"
+      aria-label={alt}
+      className={`${className} flex shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-100 text-center text-xs text-slate-400`}
+    >
+      {t("noImage")}
     </div>
   );
 }

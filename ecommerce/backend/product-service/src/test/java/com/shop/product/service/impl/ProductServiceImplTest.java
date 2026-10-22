@@ -63,11 +63,11 @@ class ProductServiceImplTest {
     @BeforeEach
     void setUp() {
         service = new ProductServiceImpl(productRepository, categoryRepository, new ProductMapperImpl(),
-                new CatalogProperties("VND"), eventPublisher, Clock.fixed(NOW, ZoneOffset.UTC));
+                new CatalogProperties("RUB", null, null), eventPublisher, Clock.fixed(NOW, ZoneOffset.UTC));
         category = new Category();
         category.setId(2L);
-        category.setName("Điện thoại");
-        category.setSlug("dien-thoai");
+        category.setName("Смартфоны");
+        category.setSlug("smartfony");
     }
 
     @Test
@@ -79,14 +79,14 @@ class ProductServiceImplTest {
             return product;
         });
 
-        ProductResponse response = service.createProduct(request("PHN-NEW-1", "Điện thoại Mới", null,
+        ProductResponse response = service.createProduct(request("PHN-NEW-1", "Новый смартфон", null,
                 new BigDecimal("1000"), null, List.of(new ProductImageRequest("https://img/1.jpg", "front"),
                         new ProductImageRequest("https://img/2.jpg", null))));
 
-        assertThat(response.slug()).isEqualTo("dien-thoai-moi");
+        assertThat(response.slug()).isEqualTo("novyi-smartfon");
         assertThat(response.status()).isEqualTo(ProductStatus.DRAFT);
-        assertThat(response.currency()).isEqualTo("VND");
-        assertThat(response.category().slug()).isEqualTo("dien-thoai");
+        assertThat(response.currency()).isEqualTo("RUB");
+        assertThat(response.category().slug()).isEqualTo("smartfony");
         assertThat(response.images()).extracting(image -> image.sortOrder()).containsExactly(0, 1);
 
         ArgumentCaptor<ProductCreatedEvent> event = ArgumentCaptor.forClass(ProductCreatedEvent.class);
@@ -124,7 +124,7 @@ class ProductServiceImplTest {
         assertThatThrownBy(() -> service.createProduct(request("PHN-X-1", "X", null,
                 new BigDecimal("1000"), new BigDecimal("1000"), null)))
                 .isInstanceOf(BadRequestException.class)
-                .hasMessageContaining("compareAtPrice");
+                .hasMessage("product.error.compare-at-price-not-above-price");
     }
 
     @Test
@@ -143,7 +143,7 @@ class ProductServiceImplTest {
         assertThatThrownBy(() -> service.updateProduct(1L, request("OTHER-SKU", "Name", null,
                 new BigDecimal("1000"), null, null)))
                 .isInstanceOf(BadRequestException.class)
-                .hasMessageContaining("SKU");
+                .hasMessage("product.error.sku-immutable");
     }
 
     @Test

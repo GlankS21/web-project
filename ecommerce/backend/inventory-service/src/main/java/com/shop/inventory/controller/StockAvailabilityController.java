@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
-@Tag(name = "Stock availability", description = "Public: what can still be ordered")
+@Tag(name = "Наличие товара", description = "Публичный доступ: сколько товара ещё можно заказать")
 @RestController
 @RequestMapping("/api/inventory/availability")
 @RequiredArgsConstructor
@@ -21,8 +21,8 @@ public class StockAvailabilityController {
 
     private final InventoryService inventoryService;
 
-    @Operation(summary = "Available quantity of several products (at most 100)",
-            description = "Example: ?productIds=1,2,3. Unknown products are reported with 0 available.")
+    @Operation(summary = "Доступное количество нескольких товаров (не более 100)",
+            description = "Пример: ?productIds=1,2,3. Для неизвестных товаров возвращается доступное количество 0.")
     @GetMapping
     public ApiResponse<List<StockAvailabilityResponse>> availability(
             @RequestParam(name = "productIds") List<Long> productIds) {

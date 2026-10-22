@@ -9,7 +9,7 @@ public class ForbiddenException extends BaseException {
         super(ErrorCode.FORBIDDEN);
     }
 
-    public ForbiddenException(String message) {
-        super(ErrorCode.FORBIDDEN, message);
+    public ForbiddenException(String message, Object... args) {
+        super(ErrorCode.FORBIDDEN, message, args);
     }
 }

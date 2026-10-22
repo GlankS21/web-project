@@ -25,5 +25,12 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
     @Query("select p from Payment p where p.orderId = :orderId")
     Optional<Payment> findByOrderIdForUpdate(@Param("orderId") UUID orderId);
 
+    /**
+     * Lock taken before any change of the payment or of one of its transactions.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select p from Payment p where p.id = :id")
+    Optional<Payment> findByIdForUpdate(@Param("id") UUID id);
+
     Page<Payment> findAllByStatus(PaymentStatus status, Pageable pageable);
 }

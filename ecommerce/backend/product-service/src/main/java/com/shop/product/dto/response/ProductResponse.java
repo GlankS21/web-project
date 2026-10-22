@@ -6,6 +6,9 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 
+/**
+ * {@code ratingAverage} is the mean review rating rounded to one decimal (0 without reviews).
+ */
 public record ProductResponse(
         Long id,
         String sku,
@@ -20,6 +23,8 @@ public record ProductResponse(
         ProductStatus status,
         CategorySummaryResponse category,
         List<ProductImageResponse> images,
+        BigDecimal ratingAverage,
+        int ratingCount,
         Instant createdAt,
         Instant updatedAt
 ) {

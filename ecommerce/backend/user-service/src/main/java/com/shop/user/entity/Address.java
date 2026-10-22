@@ -26,6 +26,9 @@ import java.util.UUID;
 @Table(name = "addresses")
 public class Address extends AuditableEntity {
 
+    /** Country of an address saved without one: the shop delivers within Russia. */
+    public static final String DEFAULT_COUNTRY_CODE = "RU";
+
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
@@ -58,9 +61,9 @@ public class Address extends AuditableEntity {
     @Column(name = "postal_code", length = 20)
     private String postalCode;
 
-    /** ISO 3166-1 alpha-2, e.g. VN. */
+    /** ISO 3166-1 alpha-2, e.g. RU. */
     @Column(name = "country_code", nullable = false, length = 2)
-    private String countryCode;
+    private String countryCode = DEFAULT_COUNTRY_CODE;
 
     @Column(name = "is_default", nullable = false)
     private boolean defaultAddress;

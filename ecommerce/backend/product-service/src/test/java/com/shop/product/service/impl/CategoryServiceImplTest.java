@@ -56,12 +56,12 @@ class CategoryServiceImplTest {
     }
 
     @Test
-    void createCategory_derivesSlugFromVietnameseName() {
+    void createCategory_derivesSlugFromRussianName() {
         when(categoryRepository.saveAndFlush(any(Category.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        CategoryResponse response = service.createCategory(new CategoryRequest("Đồng hồ thông minh", null, null, null, null));
+        CategoryResponse response = service.createCategory(new CategoryRequest("Умные часы", null, null, null, null));
 
-        assertThat(response.slug()).isEqualTo("dong-ho-thong-minh");
+        assertThat(response.slug()).isEqualTo("umnye-chasy");
         assertThat(response.parentId()).isNull();
     }
 

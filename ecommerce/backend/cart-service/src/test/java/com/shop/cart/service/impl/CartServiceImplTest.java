@@ -10,6 +10,7 @@ import com.shop.cart.dto.response.CartResponse;
 import com.shop.cart.entity.Cart;
 import com.shop.cart.entity.CartItem;
 import com.shop.cart.repository.CartRepository;
+import com.shop.cart.util.RussianPlural;
 import com.shop.common.event.OrderCreatedEvent;
 import com.shop.common.event.OrderItemPayload;
 import com.shop.common.exception.BadRequestException;
@@ -80,7 +81,7 @@ class CartServiceImplTest {
         // The unavailable line is left out of the subtotal but still counted
         assertThat(response.subtotal()).isEqualByComparingTo("400000");
         assertThat(response.totalQuantity()).isEqualTo(7);
-        assertThat(response.currency()).isEqualTo("VND");
+        assertThat(response.currency()).isEqualTo("RUB");
         assertThat(response.checkoutReady()).isFalse();
         assertThat(response.pricesUpToDate()).isTrue();
     }
@@ -145,16 +146,22 @@ class CartServiceImplTest {
 
         when(productCatalog.findAvailability(anyCollection())).thenReturn(Optional.of(Map.of(1L, 2)));
         assertThatThrownBy(() -> service.addItem(USER, new AddCartItemRequest(1L, 3)))
-                .isInstanceOf(BusinessException.class).hasMessage("Only 2 unit(s) of Product 1 are available");
+                .isInstanceOf(BusinessException.class).hasMessage(CartServiceImpl.INSUFFICIENT_STOCK)
+                .extracting(ex -> ((BusinessException) ex).getMessageArgs())
+                .isEqualTo(new Object[]{"Товар 1", 2, RussianPlural.FEW});
 
         when(productCatalog.findAvailability(anyCollection())).thenReturn(Optional.of(Map.of()));
         assertThatThrownBy(() -> service.addItem(USER, new AddCartItemRequest(1L, 1)))
-                .isInstanceOf(BusinessException.class).hasMessage("Product 1 is out of stock");
+                .isInstanceOf(BusinessException.class).hasMessage(CartServiceImpl.OUT_OF_STOCK)
+                .extracting(ex -> ((BusinessException) ex).getMessageArgs())
+                .isEqualTo(new Object[]{"Товар 1"});
 
         // Unknown stock is accepted, but never above the per-line limit
         when(productCatalog.findAvailability(anyCollection())).thenReturn(Optional.empty());
         assertThatThrownBy(() -> service.addItem(USER, new AddCartItemRequest(1L, 6)))
-                .isInstanceOf(BadRequestException.class);
+                .isInstanceOf(BadRequestException.class).hasMessage(CartServiceImpl.QUANTITY_LIMIT)
+                .extracting(ex -> ((BadRequestException) ex).getMessageArgs())
+                .isEqualTo(new Object[]{5, RussianPlural.MANY});
         verify(cartRepository, never()).saveAndFlush(any());
     }
 
@@ -167,7 +174,9 @@ class CartServiceImplTest {
 
         assertThatThrownBy(() -> service.addItem(USER, new AddCartItemRequest(3L, 1)))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("A cart can contain at most 2 different products");
+                .hasMessage(CartServiceImpl.TOO_MANY_PRODUCTS)
+                .extracting(ex -> ((BusinessException) ex).getMessageArgs())
+                .isEqualTo(new Object[]{2, RussianPlural.FEW});
     }
 
     @Test
@@ -175,14 +184,15 @@ class CartServiceImplTest {
         when(productCatalog.findSellableProducts(anyCollection())).thenReturn(Map.of());
 
         assertThatThrownBy(() -> service.addItem(USER, new AddCartItemRequest(9L, 1)))
-                .isInstanceOf(BusinessException.class).hasMessage("Product 9 is not available for sale");
+                .isInstanceOf(BusinessException.class).hasMessage(CartServiceImpl.PRODUCT_NOT_AVAILABLE);
     }
 
     @Test
     void removeItem_failsForAProductThatIsNotInTheCart() {
         when(cartRepository.findByUserIdForUpdate(USER)).thenReturn(Optional.of(cart(line(1L, 1, "1000"))));
 
-        assertThatThrownBy(() -> service.removeItem(USER, 2L)).isInstanceOf(ResourceNotFoundException.class);
+        assertThatThrownBy(() -> service.removeItem(USER, 2L)).isInstanceOf(ResourceNotFoundException.class)
+                .hasMessage(CartServiceImpl.NOT_IN_CART);
     }
 
     @Test
@@ -192,8 +202,8 @@ class CartServiceImplTest {
 
         service.removeOrderedProducts(new OrderCreatedEvent(UUID.randomUUID(), Instant.now(), UUID.randomUUID(),
                 "ORD-20261021-ABCDEF", USER, "jane@example.com",
-                List.of(new OrderItemPayload(1L, "SKU-1", "Product 1", 1, new BigDecimal("1000"))),
-                new BigDecimal("1000"), "VND"));
+                List.of(new OrderItemPayload(1L, "SKU-1", "Товар 1", 1, new BigDecimal("1000"))),
+                new BigDecimal("1000"), "RUB"));
 
         assertThat(cart.getItems()).extracting(CartItem::getProductId).containsExactly(2L);
     }
@@ -211,14 +221,14 @@ class CartServiceImplTest {
         CartItem item = new CartItem();
         item.setProductId(productId);
         item.setSku("SKU-" + productId);
-        item.setProductName("Product " + productId);
+        item.setProductName("Товар " + productId);
         item.setUnitPrice(new BigDecimal(unitPrice));
-        item.setCurrency("VND");
+        item.setCurrency("RUB");
         item.setQuantity(quantity);
         return item;
     }
 
     private static ProductSummary product(Long id, String price) {
-        return new ProductSummary(id, "SKU-" + id, "Product " + id, new BigDecimal(price), "VND", null, "ACTIVE");
+        return new ProductSummary(id, "SKU-" + id, "Товар " + id, new BigDecimal(price), "RUB", null, "ACTIVE");
     }
 }

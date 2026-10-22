@@ -5,8 +5,8 @@ package com.shop.common.exception;
  */
 public class ServiceUnavailableException extends BaseException {
 
-    public ServiceUnavailableException(String message) {
-        super(ErrorCode.SERVICE_UNAVAILABLE, message);
+    public ServiceUnavailableException(String message, Object... args) {
+        super(ErrorCode.SERVICE_UNAVAILABLE, message, args);
     }
 
     public ServiceUnavailableException(String message, Throwable cause) {

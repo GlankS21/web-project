@@ -1,24 +1,23 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Alert, Button } from "@/components/ui";
 import { api } from "@/lib/client/api";
-import { errorMessage } from "@/lib/errors";
-import type { OrderStatus } from "@/lib/types";
+import { useErrorMessage } from "@/lib/client/use-error-message";
 
 const POLL_INTERVAL_MS = 2000;
 const POLL_DURATION_MS = 90_000;
 
 /**
- * While the saga runs (stock reservation, payment), re-renders the page from the server every
- * couple of seconds so the customer sees the outcome without reloading.
+ * While the saga runs (stock reservation, payment, refund), re-renders the page from the server
+ * every couple of seconds so the customer sees the outcome without reloading.
  */
-export function OrderAutoRefresh({ status }: { status: OrderStatus }) {
+export function OrderAutoRefresh({ active }: { active: boolean }) {
   const router = useRouter();
-  const inProgress = status === "PENDING" || status === "AWAITING_PAYMENT";
   useEffect(() => {
-    if (!inProgress) {
+    if (!active) {
       return;
     }
     const started = Date.now();
@@ -30,12 +29,21 @@ export function OrderAutoRefresh({ status }: { status: OrderStatus }) {
       router.refresh();
     }, POLL_INTERVAL_MS);
     return () => clearInterval(timer);
-  }, [inProgress, router]);
+  }, [active, router]);
   return null;
 }
 
-/** Cancellation, possible until the order is paid. */
-export function CancelOrder({ orderId, adminView = false }: { orderId: string; adminView?: boolean }) {
+interface CancelOrderProps {
+  orderId: string;
+  adminView?: boolean;
+  /** The order is paid: cancelling it refunds the customer. */
+  paid?: boolean;
+}
+
+/** Cancellation, possible until the order is shipped. */
+export function CancelOrder({ orderId, adminView = false, paid = false }: CancelOrderProps) {
+  const t = useTranslations("cancelOrder");
+  const errorMessage = useErrorMessage();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
@@ -45,7 +53,7 @@ export function CancelOrder({ orderId, adminView = false }: { orderId: string; a
   if (!open) {
     return (
       <Button variant="secondary" onClick={() => setOpen(true)}>
-        Huỷ đơn hàng
+        {t("open")}
       </Button>
     );
   }
@@ -67,16 +75,17 @@ export function CancelOrder({ orderId, adminView = false }: { orderId: string; a
   return (
     <div className="card flex w-full max-w-md flex-col gap-3 p-4">
       <label htmlFor="cancel-reason" className="label">
-        {adminView ? "Lý do huỷ (gửi tới khách hàng)" : "Lý do huỷ (không bắt buộc)"}
+        {adminView ? t("reasonAdmin") : t("reasonCustomer")}
       </label>
       <textarea id="cancel-reason" rows={2} maxLength={255} value={reason} onChange={(event) => setReason(event.target.value)} className="input" />
+      {paid && <Alert tone="warning">{t("refundWarning")}</Alert>}
       {error && <Alert tone="danger">{error}</Alert>}
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <Button variant="danger" onClick={cancel} loading={submitting}>
-          Xác nhận huỷ
+          {t("confirm")}
         </Button>
         <Button variant="ghost" onClick={() => setOpen(false)} disabled={submitting}>
-          Không huỷ
+          {t("keep")}
         </Button>
       </div>
     </div>

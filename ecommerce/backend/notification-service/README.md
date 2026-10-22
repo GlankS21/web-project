@@ -1,57 +1,70 @@
 # notification-service
 
-Gửi e-mail khi khách đăng ký và theo diễn biến đơn hàng. Port mặc định: **8088**. Database: `notification_db`.
+Отправляет письма при регистрации покупателя и по ходу выполнения заказа. Порт по умолчанию: **8088**. База данных: `notification_db`.
 
-## E-mail
+## Письма
 
-| Sự kiện (queue) | E-mail |
+| Событие (очередь) | Письмо |
 |---|---|
-| `user.registered` (`notification.user-events`) | Chào mừng |
-| `order.created` (`notification.order-events`) | Đã nhận đơn: danh sách sản phẩm, tổng tiền |
-| `order.confirmed` (`notification.order-events`) | Thanh toán thành công, đơn được xác nhận |
-| `order.cancelled` (`notification.order-events`) | Đơn bị huỷ kèm lý do |
+| `user.registered` (`notification.user-events`) | Приветствие |
+| `user.password-reset-requested` (`notification.user-events`) | Ссылка для сброса пароля |
+| `order.created` (`notification.order-events`) | Заказ принят: список товаров, итоговая сумма |
+| `order.confirmed` (`notification.order-events`) | Оплата прошла успешно, заказ подтверждён |
+| `order.cancelled` (`notification.order-events`) | Заказ отменён, с указанием причины |
 
-Nội dung là văn bản thuần, tiếng Việt, số tiền dạng `25.140.000 VND`. Tên cửa hàng lấy từ `SHOP_NAME`.
+Содержимое — простой текст на русском языке, суммы в формате `25 140,00 ₽`, даты в часовом поясе Europe/Moscow.
+Название магазина берётся из `SHOP_NAME`.
 
-## Độ tin cậy
+**Письмо для сброса пароля** (тип `PASSWORD_RESET`): текст на русском, ссылка
+`<FRONTEND_URL>/reset-password?token=<URL-кодированный token>` (`FRONTEND_URL` по умолчанию `http://localhost:3000`,
+завершающий `/` отбрасывается), срок действия в минутах, вычисляемый как `expiresAt − occurredAt`, и просьба
+проигнорировать письмо, если сброс не запрашивался. Поскольку ссылка секретна, API (история покупателя и список
+администратора) возвращает для этого типа `body = null`; содержимое всё равно сохраняется для повторной отправки.
+При `MAIL_ENABLED=false` все письма (включая ссылку) записываются в лог, чтобы разработчик мог взять ссылку во время
+разработки, — не используйте этот режим в production.
 
-- Mỗi e-mail được lưu vào bảng `notifications` trước khi gửi; unique `event_id` nên sự kiện gửi lại
-  không sinh e-mail thứ hai.
-- Gửi SMTP **ngoài transaction**. Gửi lỗi (SMTP ngừng) không làm hỏng message: e-mail được đánh dấu `FAILED`
-  kèm lỗi, và `NotificationRetryJob` gửi lại mỗi `app.notification.retry.interval` (1 phút) cho tới
-  `max-attempts` (5) lần. Sau đó admin có thể gửi lại thủ công.
-- E-mail còn `PENDING` (service dừng giữa lúc lưu và gửi) cũng được job gửi lại.
-- Lỗi xử lý message khác: thử lại 3 lần rồi vào `<queue>.dlq`.
+## Надёжность
 
-## Môi trường phát triển: Mailpit
+- Каждое письмо сохраняется в таблицу `notifications` до отправки; `event_id` уникален, поэтому повторно доставленное
+  событие не порождает второе письмо.
+- Отправка SMTP выполняется **вне транзакции**. Ошибка отправки (SMTP недоступен) не портит сообщение: письмо помечается
+  `FAILED` с текстом ошибки, а `NotificationRetryJob` повторяет отправку каждые `app.notification.retry.interval`
+  (1 минута) до `max-attempts` (5) раз. После этого администратор может отправить письмо повторно вручную.
+- Письма, оставшиеся в `PENDING` (сервис остановился между сохранением и отправкой), задача тоже отправляет повторно.
+- Прочие ошибки обработки сообщений: 3 повторные попытки, затем `<queue>.dlq`.
 
-Docker Compose chạy [Mailpit](https://mailpit.axllent.org/) — SMTP giả bắt mọi e-mail, không gửi ra ngoài.
-Xem thư tại **http://localhost:8025**. Khi chạy service ngoài Docker: `docker compose up -d mailpit`,
-service gửi tới SMTP `localhost:1025` (cổng `MAILPIT_SMTP_PORT`).
+## Среда разработки: Mailpit
 
-`MAIL_ENABLED=false` thay SMTP bằng việc ghi e-mail ra log.
+Docker Compose запускает [Mailpit](https://mailpit.axllent.org/) — тестовый SMTP, перехватывающий все письма без
+отправки наружу. Письма можно посмотреть на **http://localhost:8025**. При запуске сервиса вне Docker:
+`docker compose up -d mailpit`, сервис отправляет на SMTP `localhost:1025` (порт `MAILPIT_SMTP_PORT`).
+
+`MAIL_ENABLED=false` заменяет SMTP записью писем в лог.
 
 ## API
 
-| Method | Đường dẫn | Quyền | Mô tả |
+| Method | Путь | Права | Описание |
 |---|---|---|---|
-| GET | `/api/notifications?page=&size=` | đăng nhập | E-mail đã gửi cho tôi, mới nhất trước |
-| GET | `/api/notifications/admin?status=&type=` | ADMIN | Tất cả e-mail, lọc `PENDING`/`SENT`/`FAILED` và loại |
-| POST | `/api/notifications/admin/{id}/resend` | ADMIN | Gửi lại một e-mail |
+| GET | `/api/notifications?page=&size=` | вход | Письма, отправленные мне, сначала новые |
+| GET | `/api/notifications/admin?status=&type=` | ADMIN | Все письма, фильтр по `PENDING`/`SENT`/`FAILED` и типу |
+| POST | `/api/notifications/admin/{id}/resend` | ADMIN | Повторная отправка письма |
 
-## Biến môi trường
+## Переменные окружения
 
-`CONFIG_SERVER_*`, `EUREKA_*`, `RABBITMQ_*`, `JWT_SECRET`, `NOTIFICATION_DB_PASSWORD`; tuỳ chọn:
-`NOTIFICATION_SERVICE_PORT`, `MAIL_HOST` (mặc định `localhost`, Docker: `mailpit`), `MAIL_PORT` (1025),
-`MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_SMTP_AUTH`, `MAIL_SMTP_STARTTLS`, `MAIL_ENABLED`, `MAIL_FROM`, `SHOP_NAME`.
+`CONFIG_SERVER_*`, `EUREKA_*`, `RABBITMQ_*`, `JWT_SECRET`, `NOTIFICATION_DB_PASSWORD`; необязательные:
+`NOTIFICATION_SERVICE_PORT`, `MAIL_HOST` (по умолчанию `localhost`, Docker: `mailpit`), `MAIL_PORT` (1025),
+`MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_SMTP_AUTH`, `MAIL_SMTP_STARTTLS`, `MAIL_ENABLED`, `MAIL_FROM`, `SHOP_NAME`,
+`FRONTEND_URL` (по умолчанию `http://localhost:3000`, используется для ссылок в письмах).
 
-## Test
+## Тесты
 
 ```bash
 cd backend
 ./mvnw -pl notification-service test
 ```
 
-- Unit test: `NotificationTemplatesTest` (nội dung, định dạng tiền)
-- Testcontainers: `NotificationIntegrationTest` — sự kiện thật trên RabbitMQ, SMTP giả lập bằng mock:
-  không gửi trùng, gửi lại khi lỗi, giới hạn số lần, admin gửi lại
+- Unit-тесты: `NotificationTemplatesTest` (содержимое, формат сумм, ссылка для сброса пароля: URL-кодирование, число минут),
+  `NotificationMapperTest` (скрытие содержимого писем `PASSWORD_RESET`)
+- Testcontainers: `NotificationIntegrationTest` — настоящие события в RabbitMQ, SMTP эмулируется mock-объектом:
+  без дублей, повторная отправка при ошибке, ограничение числа попыток, повторная отправка администратором, письмо
+  для сброса пароля (ссылка сохраняется, API не возвращает содержимое)

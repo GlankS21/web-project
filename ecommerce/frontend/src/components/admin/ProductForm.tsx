@@ -1,14 +1,28 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { useToast } from "@/components/toast";
 import { Alert, Button, Field } from "@/components/ui";
 import { api } from "@/lib/client/api";
-import { ApiError, errorMessage } from "@/lib/errors";
-import { PRODUCT_STATUS } from "@/lib/format";
-import type { Category, Product, ProductRequest, ProductStatus } from "@/lib/types";
+import { useErrorMessage } from "@/lib/client/use-error-message";
+import { ApiError } from "@/lib/errors";
+import { PRODUCT_STATUS_TONE } from "@/lib/format";
+import type { Category, Product, ProductRequest, ProductStatus, UploadedImage } from "@/lib/types";
 
 const MAX_IMAGES = 10;
+const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+const UPLOAD_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+/** Images uploaded to product-service are served by this site under /api/products/images/. */
+const UPLOADED_IMAGE_PREFIX = "/api/products/images/";
+/** Absolute https address, or an uploaded image. */
+const IMAGE_URL_PATTERN = "https://.+|/api/products/images/[A-Za-z0-9._-]+";
+
+function previewable(url: string): boolean {
+  // The Content-Security-Policy only allows https images and this site's own
+  return url.startsWith("https://") || url.startsWith(UPLOADED_IMAGE_PREFIX);
+}
 
 interface ImageRow {
   /** Stable React key; not sent. */
@@ -25,6 +39,15 @@ interface Props {
 
 export function ProductForm({ categories, product }: Props) {
   const router = useRouter();
+  const t = useTranslations("imageUpload");
+  const tForm = useTranslations("productForm");
+  const tStatus = useTranslations("productStatus");
+  const tCommon = useTranslations("common");
+  const errorMessage = useErrorMessage();
+  const toast = useToast();
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [images, setImages] = useState<ImageRow[]>(
     () => product?.images.map((image, index) => ({ key: index, url: image.url, altText: image.altText ?? "" })) ?? [],
   );
@@ -59,6 +82,7 @@ export function ProductForm({ categories, product }: Props) {
       if (product) {
         await api.put(`/products/${product.id}`, body);
         setResult({ ok: true });
+        toast.success(tForm("saved"));
         router.refresh();
       } else {
         const created = await api.post<Product>("/products", body);
@@ -71,16 +95,58 @@ export function ProductForm({ categories, product }: Props) {
     }
   };
 
+  /** Uploads the chosen files one after the other and appends them to the image list. */
+  const upload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = "";
+    setUploadError(null);
+    const free = MAX_IMAGES - images.length;
+    if (files.length > free) {
+      setUploadError(t("limit", { max: MAX_IMAGES }));
+    }
+    const added: ImageRow[] = [];
+    let key = nextKey;
+    for (const file of files.slice(0, Math.max(free, 0))) {
+      if (!UPLOAD_TYPES.includes(file.type)) {
+        setUploadError(t("unsupported", { name: file.name }));
+        continue;
+      }
+      if (file.size > MAX_UPLOAD_BYTES) {
+        setUploadError(t("tooLarge", { name: file.name }));
+        continue;
+      }
+      setUploading(file.name);
+      try {
+        const form = new FormData();
+        form.append("file", file);
+        const uploaded = await api.upload<UploadedImage>("/products/images", form);
+        added.push({ key: key++, url: uploaded.url, altText: "" });
+      } catch (error) {
+        const reason =
+          error instanceof ApiError && error.status === 400 && error.violations.length === 0
+            ? error.message
+            : errorMessage(error);
+        setUploadError(t("failed", { name: file.name, reason }));
+      }
+    }
+    setUploading(null);
+    if (added.length > 0) {
+      setImages((rows) => [...rows, ...added].slice(0, MAX_IMAGES));
+      setNextKey(key);
+      toast.success(t("uploaded", { count: added.length }));
+    }
+  };
+
   const fieldError = (name: string) =>
     result && !result.ok && result.error instanceof ApiError ? result.error.fieldError(name) : undefined;
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-6">
       <section className="card grid gap-4 p-6 sm:grid-cols-2">
-        <Field label="Tên sản phẩm" htmlFor="name" error={fieldError("name")} required className="sm:col-span-2">
+        <Field label={tForm("name")} htmlFor="name" error={fieldError("name")} required className="sm:col-span-2">
           <input id="name" name="name" required maxLength={200} defaultValue={product?.name} className="input" />
         </Field>
-        <Field label="SKU" htmlFor="sku" error={fieldError("sku")} hint="3–64 ký tự: chữ in hoa, số, dấu gạch ngang" required>
+        <Field label={tForm("sku")} htmlFor="sku" error={fieldError("sku")} hint={tForm("skuHint")} required>
           <input
             id="sku"
             name="sku"
@@ -91,7 +157,7 @@ export function ProductForm({ categories, product }: Props) {
             className="input uppercase"
           />
         </Field>
-        <Field label="Slug (đường dẫn)" htmlFor="slug" error={fieldError("slug")} hint="Để trống để tạo từ tên">
+        <Field label={tForm("slug")} htmlFor="slug" error={fieldError("slug")} hint={tForm("slugHint")}>
           <input
             id="slug"
             name="slug"
@@ -101,10 +167,10 @@ export function ProductForm({ categories, product }: Props) {
             className="input"
           />
         </Field>
-        <Field label="Danh mục" htmlFor="categoryId" error={fieldError("categoryId")} required>
+        <Field label={tForm("category")} htmlFor="categoryId" error={fieldError("categoryId")} required>
           <select id="categoryId" name="categoryId" required defaultValue={product?.category.id ?? ""} className="input">
             <option value="" disabled>
-              Chọn danh mục
+              {tForm("chooseCategory")}
             </option>
             {categories.map((root) => (
               <optgroup key={root.id} label={root.name}>
@@ -118,13 +184,18 @@ export function ProductForm({ categories, product }: Props) {
             ))}
           </select>
         </Field>
-        <Field label="Thương hiệu" htmlFor="brand" error={fieldError("brand")}>
+        <Field label={tForm("brand")} htmlFor="brand" error={fieldError("brand")}>
           <input id="brand" name="brand" maxLength={100} defaultValue={product?.brand ?? ""} className="input" />
         </Field>
-        <Field label="Giá bán" htmlFor="price" error={fieldError("price")} required>
+        <Field label={tForm("price")} htmlFor="price" error={fieldError("price")} required>
           <input id="price" name="price" type="number" required min={0.01} step="0.01" defaultValue={product?.price} className="input" />
         </Field>
-        <Field label="Giá gốc (gạch ngang)" htmlFor="compareAtPrice" error={fieldError("compareAtPrice")} hint="Phải lớn hơn giá bán">
+        <Field
+          label={tForm("compareAtPrice")}
+          htmlFor="compareAtPrice"
+          error={fieldError("compareAtPrice")}
+          hint={tForm("compareAtPriceHint")}
+        >
           <input
             id="compareAtPrice"
             name="compareAtPrice"
@@ -135,16 +206,16 @@ export function ProductForm({ categories, product }: Props) {
             className="input"
           />
         </Field>
-        <Field label="Trạng thái" htmlFor="status" error={fieldError("status")} hint="Chỉ sản phẩm “Đang bán” hiển thị cho khách">
+        <Field label={tForm("status")} htmlFor="status" error={fieldError("status")} hint={tForm("statusHint")}>
           <select id="status" name="status" defaultValue={product?.status ?? "DRAFT"} className="input">
-            {(Object.keys(PRODUCT_STATUS) as ProductStatus[]).map((value) => (
+            {(Object.keys(PRODUCT_STATUS_TONE) as ProductStatus[]).map((value) => (
               <option key={value} value={value}>
-                {PRODUCT_STATUS[value].label}
+                {tStatus(value)}
               </option>
             ))}
           </select>
         </Field>
-        <Field label="Mô tả ngắn" htmlFor="shortDescription" error={fieldError("shortDescription")} className="sm:col-span-2">
+        <Field label={tForm("shortDescription")} htmlFor="shortDescription" error={fieldError("shortDescription")} className="sm:col-span-2">
           <textarea
             id="shortDescription"
             name="shortDescription"
@@ -154,7 +225,7 @@ export function ProductForm({ categories, product }: Props) {
             className="input"
           />
         </Field>
-        <Field label="Mô tả chi tiết" htmlFor="description" error={fieldError("description")} className="sm:col-span-2">
+        <Field label={tForm("description")} htmlFor="description" error={fieldError("description")} className="sm:col-span-2">
           <textarea
             id="description"
             name="description"
@@ -169,27 +240,31 @@ export function ProductForm({ categories, product }: Props) {
       <section className="card flex flex-col gap-3 p-6" aria-labelledby="images-title">
         <div className="flex items-center justify-between">
           <h2 id="images-title" className="font-semibold text-slate-900">
-            Hình ảnh
+            {tForm("images")}
           </h2>
           <span className="text-xs text-slate-500">
-            {images.length}/{MAX_IMAGES} · ảnh đầu tiên là ảnh đại diện
+            {tForm("imagesCount", { count: images.length, max: MAX_IMAGES })}
           </span>
         </div>
         {images.map((image, index) => (
           <div key={image.key} className="flex flex-wrap items-start gap-2">
-            {/* Preview only renders https images (Content-Security-Policy) */}
             <div className="h-10 w-10 shrink-0 overflow-hidden rounded bg-slate-100">
-              {image.url.startsWith("https://") && <img src={image.url} alt="" className="h-full w-full object-cover" />}
+              {previewable(image.url) && <img src={image.url} alt="" className="h-full w-full object-cover" />}
             </div>
             <input
               value={image.url}
-              onChange={(event) => setImages((rows) => rows.map((row) => (row.key === image.key ? { ...row, url: event.target.value } : row)))}
-              type="url"
+              onChange={(event) =>
+                setImages((rows) => rows.map((row) => (row.key === image.key ? { ...row, url: event.target.value } : row)))
+              }
+              type="text"
+              inputMode="url"
               required
               maxLength={1000}
-              placeholder="https://..."
-              className="input min-w-60 flex-1"
-              aria-label={`URL ảnh ${index + 1}`}
+              pattern={IMAGE_URL_PATTERN}
+              title={t("urlHint")}
+              placeholder={tForm("imageUrlPlaceholder")}
+              className="input min-w-0 flex-1 basis-60"
+              aria-label={tForm("imageUrl", { number: index + 1 })}
             />
             <input
               value={image.altText}
@@ -197,9 +272,9 @@ export function ProductForm({ categories, product }: Props) {
                 setImages((rows) => rows.map((row) => (row.key === image.key ? { ...row, altText: event.target.value } : row)))
               }
               maxLength={255}
-              placeholder="Mô tả ảnh"
-              className="input w-48"
-              aria-label={`Mô tả ảnh ${index + 1}`}
+              placeholder={tForm("imageAltPlaceholder")}
+              className="input min-w-0 flex-1 basis-40 sm:max-w-48"
+              aria-label={tForm("imageAlt", { number: index + 1 })}
             />
             <div className="flex gap-1">
               <Button
@@ -208,7 +283,7 @@ export function ProductForm({ categories, product }: Props) {
                 size="sm"
                 disabled={index === 0}
                 onClick={() => setImages((rows) => move(rows, index, index - 1))}
-                aria-label="Lên"
+                aria-label={tForm("moveUp", { number: index + 1 })}
               >
                 ↑
               </Button>
@@ -217,15 +292,18 @@ export function ProductForm({ categories, product }: Props) {
                 variant="ghost"
                 size="sm"
                 onClick={() => setImages((rows) => rows.filter((row) => row.key !== image.key))}
-                aria-label="Xoá ảnh"
+                aria-label={tForm("removeImage", { number: index + 1 })}
               >
                 ✕
               </Button>
             </div>
-            {fieldError(`images[${index}].url`) && <p className="w-full text-xs text-rose-600">{fieldError(`images[${index}].url`)}</p>}
+            {fieldError(`images[${index}].url`) && (
+              <p className="w-full text-xs text-rose-600">{fieldError(`images[${index}].url`)}</p>
+            )}
           </div>
         ))}
-        <div>
+        {uploadError && <Alert tone="danger">{uploadError}</Alert>}
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             type="button"
             variant="secondary"
@@ -236,16 +314,34 @@ export function ProductForm({ categories, product }: Props) {
               setNextKey((key) => key + 1);
             }}
           >
-            Thêm ảnh
+            {tForm("addImage")}
           </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            loading={uploading !== null}
+            disabled={images.length >= MAX_IMAGES}
+            onClick={() => fileInput.current?.click()}
+          >
+            {uploading ? t("uploading", { name: uploading }) : t("upload")}
+          </Button>
+          <input
+            ref={fileInput}
+            type="file"
+            accept={UPLOAD_TYPES.join(",")}
+            multiple
+            hidden
+            onChange={(event) => void upload(event)}
+          />
+          <span className="text-xs text-slate-500">{t("hint")}</span>
         </div>
       </section>
 
-      {result?.ok && <Alert tone="success">Đã lưu sản phẩm.</Alert>}
       {result && !result.ok && <Alert tone="danger">{errorMessage(result.error)}</Alert>}
       <div>
         <Button type="submit" size="lg" loading={saving}>
-          {product ? "Lưu thay đổi" : "Tạo sản phẩm"}
+          {product ? tCommon("saveChanges") : tForm("create")}
         </Button>
       </div>
     </form>

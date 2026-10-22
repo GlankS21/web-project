@@ -8,22 +8,27 @@ import org.springframework.validation.annotation.Validated;
 import java.time.Duration;
 
 /**
- * @param mail     e-mail delivery
- * @param shopName shown in subjects and signatures
- * @param retry    re-delivery of e-mails that could not be sent
+ * @param mail        e-mail delivery
+ * @param shopName    shown in subjects and signatures
+ * @param retry       re-delivery of e-mails that could not be sent
+ * @param frontendUrl base URL of the storefront used in e-mail links, without trailing slash
  */
 @Validated
 @ConfigurationProperties(prefix = "app.notification")
 public record NotificationProperties(
         @Valid Mail mail,
         String shopName,
-        @Valid Retry retry
+        @Valid Retry retry,
+        String frontendUrl
 ) {
 
     public NotificationProperties {
         mail = mail == null ? new Mail(null, null) : mail;
         shopName = shopName == null || shopName.isBlank() ? "Shop" : shopName;
         retry = retry == null ? new Retry(null, null) : retry;
+        frontendUrl = frontendUrl == null || frontendUrl.isBlank()
+                ? "http://localhost:3000"
+                : frontendUrl.trim().replaceAll("/+$", "");
     }
 
     /**

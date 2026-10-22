@@ -219,7 +219,11 @@ services:
     environment:
       <<: *client-env
       PRODUCT_DB_PASSWORD: ${PRODUCT_DB_PASSWORD}
-      CATALOG_CURRENCY: ${CATALOG_CURRENCY:-VND}
+      CATALOG_CURRENCY: ${CATALOG_CURRENCY:-RUB}
+      # Product images uploaded by administrators (kept across container rebuilds)
+      PRODUCT_IMAGE_DIR: /data/product-images
+    volumes:
+      - product-images:/data/product-images
     depends_on:
       config-server: { condition: service_healthy }
       discovery-server: { condition: service_healthy }
@@ -309,8 +313,9 @@ services:
     environment:
       <<: *client-env
       PAYMENT_DB_PASSWORD: ${PAYMENT_DB_PASSWORD}
-      PAYMENT_SIMULATOR_MAX_AMOUNT: ${PAYMENT_SIMULATOR_MAX_AMOUNT:-50000000}
-      PAYMENT_SIMULATOR_FAILURE_RATE: ${PAYMENT_SIMULATOR_FAILURE_RATE:-0.0}
+      PAYMENT_PROVIDER: ${PAYMENT_PROVIDER:-mock}
+      YOOKASSA_SHOP_ID: ${YOOKASSA_SHOP_ID:-}
+      YOOKASSA_SECRET_KEY: ${YOOKASSA_SECRET_KEY:-}
     depends_on:
       config-server: { condition: service_healthy }
       discovery-server: { condition: service_healthy }
@@ -337,6 +342,8 @@ services:
       MAIL_PORT: ${MAIL_PORT:-1025}
       MAIL_FROM: ${MAIL_FROM:-no-reply@shop.local}
       SHOP_NAME: ${SHOP_NAME:-TechShop}
+      # Base address of the links in e-mails (password reset)
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
     depends_on:
       config-server: { condition: service_healthy }
       discovery-server: { condition: service_healthy }
@@ -380,3 +387,4 @@ networks:
 volumes:
   postgres-data:
   rabbitmq-data:
+  product-images:

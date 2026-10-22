@@ -1,82 +1,84 @@
 # inventory-service
 
-Tồn kho, giữ hàng (reservation) cho Saga đặt hàng và sổ biến động kho. Port mặc định: **8084**.
-Database: `inventory_db`.
+Остатки, резервирование товара (reservation) для Saga оформления заказа и журнал движения склада. Порт по умолчанию: **8084**.
+База данных: `inventory_db`.
 
-## Mô hình tồn kho
+## Модель остатков
 
-Mỗi sản phẩm có một bản ghi `inventory_items` (khoá chính = id sản phẩm bên product-service):
+У каждого товара есть запись `inventory_items` (первичный ключ = id товара в product-service):
 
-| Trường | Ý nghĩa |
+| Поле | Значение |
 |---|---|
-| `quantityOnHand` | Hàng thực có trong kho |
-| `quantityReserved` | Phần đang giữ cho đơn chờ thanh toán |
-| `availableQuantity` | `onHand − reserved`, phần còn bán được |
-| `lowStockThreshold` | Sắp hết hàng khi `available ≤ threshold` |
+| `quantityOnHand` | Фактическое количество на складе |
+| `quantityReserved` | Часть, зарезервированная под заказы, ожидающие оплаты |
+| `availableQuantity` | `onHand − reserved`, доступно для продажи |
+| `lowStockThreshold` | Товар заканчивается, когда `available ≤ threshold` |
 
-DB đảm bảo `reserved ≥ 0` và `onHand ≥ reserved`. Mọi thay đổi ghi vào sổ `stock_movements`
-(`ADJUSTMENT`, `RESERVATION`, `RELEASE`, `SALE`) kèm số lượng sau thay đổi, mã đơn hoặc admin thực hiện.
+БД гарантирует `reserved ≥ 0` и `onHand ≥ reserved`. Каждое изменение записывается в журнал `stock_movements`
+(`ADJUSTMENT`, `RESERVATION`, `RELEASE`, `SALE`) с количеством после изменения, номером заказа или администратором,
+выполнившим операцию.
 
-Bản ghi tồn kho được tạo khi nhận `product.created`. Nếu sự kiện chưa tới, lần điều chỉnh kho đầu tiên
-của admin sẽ tạo bản ghi (SKU được điền bổ sung khi sự kiện tới muộn).
+Запись об остатке создаётся при получении `product.created`. Если событие ещё не пришло, первая корректировка остатка
+администратором создаёт запись (SKU дозаполняется, когда событие приходит с опозданием).
 
-## Saga (phía inventory)
+## Saga (сторона inventory)
 
-| Nhận (queue) | Xử lý | Trả lời (exchange `shop.inventory.events`) |
+| Получение (очередь) | Обработка | Ответ (exchange `shop.inventory.events`) |
 |---|---|---|
-| `order.created` (`inventory.order-created`) | Giữ **tất cả hoặc không** mặt hàng nào; dòng trùng sản phẩm được cộng dồn | `stock.reserved` hoặc `stock.reservation-failed` (kèm lý do từng sản phẩm thiếu) |
-| `order.confirmed` (`inventory.order-confirmed`) | Hàng đã giữ rời kho: `onHand` và `reserved` cùng giảm | — |
-| `order.cancelled` (`inventory.order-cancelled`) | Trả lại hàng đã giữ | `stock.released` (chỉ khi thực sự có hàng được trả) |
-| `product.created` (`inventory.product-created`) | Mở bản ghi tồn kho rỗng | — |
+| `order.created` (`inventory.order-created`) | Резервирует **все позиции или ни одной**; строки с одинаковым товаром суммируются | `stock.reserved` или `stock.reservation-failed` (с причиной по каждому недостающему товару) |
+| `order.confirmed` (`inventory.order-confirmed`) | Зарезервированный товар покидает склад: `onHand` и `reserved` уменьшаются вместе | — |
+| `order.cancelled` (`inventory.order-cancelled`) | Снимает резерв | `stock.released` (только если резерв действительно был снят) |
+| `product.created` (`inventory.product-created`) | Создаёт пустую запись об остатке | — |
 
-Đảm bảo tính đúng:
+Гарантии корректности:
 
-- **Idempotent**: mỗi đơn có tối đa một `stock_reservations` (unique `order_id`). Sự kiện gửi lại không
-  giữ hàng lần hai và không trả lời lần hai. Hủy đơn tới trước `order.created` để lại bản ghi `RELEASED`,
-  nên `order.created` tới muộn không giữ hàng.
-- **Đồng thời**: khoá dòng `SELECT … FOR UPDATE` theo thứ tự id sản phẩm (không deadlock); confirm/cancel
-  của cùng một đơn được tuần tự hoá bằng khoá dòng reservation.
-- **Không mất phản hồi (transactional outbox)**: sự kiện trả lời được ghi vào bảng `outbox_events` trong
-  cùng transaction với thay đổi tồn kho. Một job (mỗi 1s) gửi lên RabbitMQ, chờ **publisher confirm** rồi
-  mới đánh dấu đã gửi; nhiều instance chạy song song an toàn nhờ `FOR UPDATE SKIP LOCKED`. Giao nhận
-  at-least-once — consumer phía order-service khử trùng theo `eventId`. Sự kiện đã gửi bị xoá sau 7 ngày.
-- Lỗi xử lý: thử lại 3 lần rồi chuyển vào `<queue>.dlq`.
+- **Идемпотентность**: у каждого заказа не более одной `stock_reservations` (unique `order_id`). Повторно доставленное
+  событие не резервирует товар второй раз и не отвечает второй раз. Отмена заказа, пришедшая раньше `order.created`,
+  оставляет запись `RELEASED`, поэтому опоздавший `order.created` товар не резервирует.
+- **Конкурентность**: блокировка строк `SELECT … FOR UPDATE` в порядке id товаров (без deadlock); confirm/cancel
+  одного и того же заказа выполняются последовательно благодаря блокировке строки reservation.
+- **Ответы не теряются (transactional outbox)**: ответное событие записывается в таблицу `outbox_events` в той же
+  транзакции, что и изменение остатков. Задача (каждую 1 с) отправляет его в RabbitMQ, ждёт **publisher confirm** и
+  только затем помечает как отправленное; несколько экземпляров безопасно работают параллельно благодаря
+  `FOR UPDATE SKIP LOCKED`. Доставка at-least-once — консьюмер на стороне order-service устраняет дубликаты по `eventId`.
+  Отправленные события удаляются через 7 дней.
+- Ошибки обработки: 3 повторные попытки, затем перемещение в `<queue>.dlq`.
 
-Hàng giữ cho đơn không bao giờ được thanh toán không bị kẹt: order-service huỷ đơn quá hạn thanh toán
-(mặc định 15 phút) và hàng được trả lại qua `order.cancelled`.
+Резерв под заказ, который так и не был оплачен, не зависает: order-service отменяет заказы с истёкшим сроком оплаты
+(по умолчанию 15 минут), и резерв снимается через `order.cancelled`.
 
 ## API
 
-| Method | Đường dẫn | Quyền | Mô tả |
+| Method | Путь | Права | Описание |
 |---|---|---|---|
-| GET | `/api/inventory/availability?productIds=1,2,3` | công khai | Số lượng còn bán được (tối đa 100 id; sản phẩm không có bản ghi = 0) |
-| GET | `/api/inventory?lowStock=true&page=&size=&sort=` | ADMIN | Danh sách tồn kho, lọc sắp hết hàng |
-| GET | `/api/inventory/{productId}` | ADMIN | Tồn kho của một sản phẩm |
-| PUT | `/api/inventory/{productId}` | ADMIN | Kiểm kê: `{"quantityOnHand":42,"lowStockThreshold":5,"reason":"..."}` |
-| POST | `/api/inventory/{productId}/adjustments` | ADMIN | Nhập/xuất: `{"quantityChange":20,"reason":"..."}` (≠ 0, không được bớt vào phần đang giữ) |
-| GET | `/api/inventory/{productId}/movements` | ADMIN | Sổ biến động, mới nhất trước |
-| GET | `/api/inventory/reservations/{orderId}` | ADMIN | Trạng thái giữ hàng của một đơn |
+| GET | `/api/inventory/availability?productIds=1,2,3` | публично | Доступное для продажи количество (не более 100 id; товар без записи = 0) |
+| GET | `/api/inventory?lowStock=true&page=&size=&sort=` | ADMIN | Список остатков, фильтр заканчивающихся товаров |
+| GET | `/api/inventory/{productId}` | ADMIN | Остаток одного товара |
+| PUT | `/api/inventory/{productId}` | ADMIN | Инвентаризация: `{"quantityOnHand":42,"lowStockThreshold":5,"reason":"..."}` |
+| POST | `/api/inventory/{productId}/adjustments` | ADMIN | Приход/расход: `{"quantityChange":20,"reason":"..."}` (≠ 0, нельзя уменьшить ниже зарезервированного) |
+| GET | `/api/inventory/{productId}/movements` | ADMIN | Журнал движения, сначала новые |
+| GET | `/api/inventory/reservations/{orderId}` | ADMIN | Состояние резерва по заказу |
 
-## Dữ liệu mẫu (Flyway)
+## Начальные данные (Flyway)
 
 - `V1__init_schema.sql`: `inventory_items`, `stock_reservations`, `stock_reservation_items`,
   `stock_movements`, `outbox_events`
-- `V2__seed_stock.sql`: tồn kho cho 24 sản phẩm mẫu của product-service (cùng id, SKU) + bút toán số dư
-  đầu kỳ. Cố ý có sản phẩm sắp hết (id 6, 10) và hết hàng (id 17).
+- `V2__seed_stock.sql`: остатки для 24 демонстрационных товаров product-service (те же id, SKU) + проводки начального
+  сальдо. Намеренно есть заканчивающиеся товары (id 6, 10) и товар, которого нет в наличии (id 17).
 
-## Biến môi trường
+## Переменные окружения
 
 `CONFIG_SERVER_*`, `EUREKA_*`, `RABBITMQ_*`, `JWT_SECRET`, `INVENTORY_DB_PASSWORD`;
-tuỳ chọn: `INVENTORY_SERVICE_PORT`. Cấu hình outbox (`app.inventory.outbox.*`) trong
+необязательные: `INVENTORY_SERVICE_PORT`. Конфигурация outbox (`app.inventory.outbox.*`) — в
 `config-repo/inventory-service.yml`.
 
-## Test
+## Тесты
 
 ```bash
 cd backend
 ./mvnw -pl inventory-service test
 ```
 
-- Unit test: `InventoryItemTest`, `StockReservationServiceImplTest`, `InventoryServiceImplTest`
-- Testcontainers: `InventorySagaIntegrationTest` — publish `order.created/confirmed/cancelled`,
-  `product.created` thật lên RabbitMQ và chờ phản hồi đi ra qua outbox
+- Unit-тесты: `InventoryItemTest`, `StockReservationServiceImplTest`, `InventoryServiceImplTest`
+- Testcontainers: `InventorySagaIntegrationTest` — публикует настоящие `order.created/confirmed/cancelled`,
+  `product.created` в RabbitMQ и ждёт ответов, уходящих через outbox

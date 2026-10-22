@@ -40,7 +40,12 @@ import java.util.UUID;
 public class AuthServiceImpl implements AuthService {
 
     private static final String TOKEN_TYPE = "Bearer";
-    private static final String INVALID_CREDENTIALS = "Invalid email or password";
+    static final String EMAIL_TAKEN = "auth.error.email-taken";
+    static final String INVALID_CREDENTIALS = "auth.error.invalid-credentials";
+    static final String ACCOUNT_DISABLED = "auth.error.account-disabled";
+    static final String CURRENT_PASSWORD_INCORRECT = "auth.error.current-password-incorrect";
+    static final String SAME_PASSWORD = "auth.error.same-password";
+    static final String ACCOUNT_NOT_FOUND = "auth.error.account-not-found";
 
     private final UserAccountRepository userAccountRepository;
     private final RoleRepository roleRepository;
@@ -81,7 +86,7 @@ public class AuthServiceImpl implements AuthService {
     public AuthResponse register(RegisterRequest request) {
         String email = EmailUtils.normalize(request.email());
         if (userAccountRepository.existsByEmail(email)) {
-            throw new ConflictException("An account with this email already exists");
+            throw new ConflictException(EMAIL_TAKEN);
         }
         Role customerRole = roleRepository.findByName(RoleName.ROLE_CUSTOMER)
                 .orElseThrow(() -> new IllegalStateException("Role ROLE_CUSTOMER is not seeded"));
@@ -117,7 +122,7 @@ public class AuthServiceImpl implements AuthService {
             throw new UnauthorizedException(INVALID_CREDENTIALS);
         }
         if (!account.isEnabled()) {
-            throw new ForbiddenException("Account is disabled");
+            throw new ForbiddenException(ACCOUNT_DISABLED);
         }
         account.setLastLoginAt(clock.instant());
         return toAuthResponse(tokenService.issueTokens(account));
@@ -152,10 +157,10 @@ public class AuthServiceImpl implements AuthService {
     public void changePassword(UUID accountId, ChangePasswordRequest request) {
         UserAccount account = findAccount(accountId);
         if (!passwordEncoder.matches(request.currentPassword(), account.getPasswordHash())) {
-            throw new BadRequestException("Current password is incorrect");
+            throw new BadRequestException(CURRENT_PASSWORD_INCORRECT);
         }
         if (request.currentPassword().equals(request.newPassword())) {
-            throw new BadRequestException("New password must be different from the current password");
+            throw new BadRequestException(SAME_PASSWORD);
         }
         account.setPasswordHash(passwordEncoder.encode(request.newPassword()));
         // Every other session must re-authenticate with the new password.
@@ -165,7 +170,7 @@ public class AuthServiceImpl implements AuthService {
 
     private UserAccount findAccount(UUID accountId) {
         return userAccountRepository.findById(accountId)
-                .orElseThrow(() -> new ResourceNotFoundException("Account", "id", accountId));
+                .orElseThrow(() -> ResourceNotFoundException.of(ACCOUNT_NOT_FOUND));
     }
 
     private AuthResponse toAuthResponse(IssuedTokens tokens) {

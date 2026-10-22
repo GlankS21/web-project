@@ -2,6 +2,7 @@ package com.shop.order.service.impl;
 
 import com.shop.common.constant.MessagingConstants;
 import com.shop.common.event.PaymentFailedEvent;
+import com.shop.common.event.PaymentRefundedEvent;
 import com.shop.common.event.PaymentSucceededEvent;
 import com.shop.common.event.StockReservationFailedEvent;
 import com.shop.common.event.StockReservedEvent;
@@ -11,11 +12,13 @@ import com.shop.order.entity.OrderStatus;
 import com.shop.order.repository.OrderRepository;
 import com.shop.order.service.OrderLifecycle;
 import com.shop.order.service.OrderSagaService;
+import com.shop.order.util.MoneyFormat;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.time.Clock;
 import java.util.EnumSet;
@@ -49,7 +52,10 @@ public class OrderSagaServiceImpl implements OrderSagaService {
     public void onStockReservationFailed(StockReservationFailedEvent event) {
         lockOrder(event.orderId(), MessagingConstants.STOCK_RESERVATION_FAILED_KEY).ifPresent(order -> {
             if (expect(order, OrderStatus.PENDING, MessagingConstants.STOCK_RESERVATION_FAILED_KEY)) {
-                orderLifecycle.cancel(order, event.reason(), null);
+                // inventory-service writes its reason in Russian, e.g. which products are short
+                String reason = StringUtils.hasText(event.reason()) ? event.reason()
+                        : orderLifecycle.message("order.cancel-reason.stock-unavailable");
+                orderLifecycle.cancel(order, reason, null);
             }
         });
     }
@@ -76,7 +82,23 @@ public class OrderSagaServiceImpl implements OrderSagaService {
     public void onPaymentFailed(PaymentFailedEvent event) {
         lockOrder(event.orderId(), MessagingConstants.PAYMENT_FAILED_KEY).ifPresent(order -> {
             if (expect(order, OrderStatus.AWAITING_PAYMENT, MessagingConstants.PAYMENT_FAILED_KEY)) {
-                orderLifecycle.cancel(order, "Payment failed: " + event.reason(), null);
+                // payment-service sends the Russian text of its decline reason
+                String reason = StringUtils.hasText(event.reason())
+                        ? orderLifecycle.message("order.cancel-reason.payment-failed", event.reason())
+                        : orderLifecycle.message("order.cancel-reason.payment-failed-no-reason");
+                orderLifecycle.cancel(order, reason, null);
+            }
+        });
+    }
+
+    @Override
+    @Transactional
+    public void onPaymentRefunded(PaymentRefundedEvent event) {
+        lockOrder(event.orderId(), MessagingConstants.PAYMENT_REFUNDED_KEY).ifPresent(order -> {
+            if (expect(order, OrderStatus.CANCELLED, MessagingConstants.PAYMENT_REFUNDED_KEY)
+                    && order.markRefunded(event.refundId(), orderLifecycle.message("order.history.payment-refunded",
+                    MoneyFormat.format(event.amount(), event.currency()), event.refundId()), clock.instant())) {
+                log.info("Payment of order {} refunded (refund {})", order.getOrderNumber(), event.refundId());
             }
         });
     }
@@ -96,8 +118,8 @@ public class OrderSagaServiceImpl implements OrderSagaService {
         return orderRepository.findByIdForUpdate(orderId)
                 .filter(order -> order.getStatus().isInProgress())
                 .map(order -> {
-                    orderLifecycle.cancel(order, "Not confirmed within %d minutes"
-                            .formatted(properties.paymentTimeout().toMinutes()), null);
+                    orderLifecycle.cancel(order, orderLifecycle.message("order.cancel-reason.expired",
+                            properties.paymentTimeout().toMinutes()), null);
                     return true;
                 })
                 .orElse(false);

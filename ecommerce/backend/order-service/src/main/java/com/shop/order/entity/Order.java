@@ -67,6 +67,14 @@ public class Order extends AuditableEntity {
     @Column(name = "shipping_fee", nullable = false, precision = 14, scale = 2, updatable = false)
     private BigDecimal shippingFee;
 
+    /** Coupon applied at checkout, {@code null} without one. */
+    @Column(name = "coupon_code", length = Coupon.MAX_CODE_LENGTH, updatable = false)
+    private String couponCode;
+
+    @Column(name = "discount_amount", nullable = false, precision = 14, scale = 2, updatable = false)
+    private BigDecimal discountAmount = BigDecimal.ZERO;
+
+    /** {@code subtotal − discountAmount + shippingFee}. */
     @Column(name = "total_amount", nullable = false, precision = 14, scale = 2, updatable = false)
     private BigDecimal totalAmount;
 
@@ -104,6 +112,13 @@ public class Order extends AuditableEntity {
     @Column(name = "cancelled_at")
     private Instant cancelledAt;
 
+    /** Reference of the refund at the payment provider, once the payment of a cancelled order is returned. */
+    @Column(name = "refund_transaction_id", length = 100)
+    private String refundTransactionId;
+
+    @Column(name = "refunded_at")
+    private Instant refundedAt;
+
     @BatchSize(size = 50)
     @OrderBy("id ASC")
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
@@ -119,6 +134,34 @@ public class Order extends AuditableEntity {
     public void addItem(OrderItem item) {
         item.setOrder(this);
         items.add(item);
+    }
+
+    /**
+     * Sets the amounts of a new order without discount.
+     */
+    public void price(BigDecimal subtotal, BigDecimal shippingFee) {
+        this.subtotal = subtotal;
+        this.shippingFee = shippingFee;
+        this.discountAmount = BigDecimal.ZERO;
+        this.couponCode = null;
+        this.totalAmount = subtotal.add(shippingFee);
+    }
+
+    /**
+     * Applies the discount of a coupon to the priced order (the shipping fee is not affected).
+     *
+     * @param discount between zero and the subtotal
+     */
+    public void applyCoupon(String code, BigDecimal discount) {
+        if (status != null) {
+            throw new IllegalStateException("Order %s is already placed".formatted(orderNumber));
+        }
+        if (discount.signum() < 0 || discount.compareTo(subtotal) > 0) {
+            throw new IllegalArgumentException("Discount %s outside [0, %s]".formatted(discount, subtotal));
+        }
+        couponCode = code;
+        discountAmount = discount;
+        totalAmount = subtotal.subtract(discount).add(shippingFee);
     }
 
     /**
@@ -139,7 +182,7 @@ public class Order extends AuditableEntity {
      */
     public void changeStatus(OrderStatus target, String reason, UUID actorId, Instant at) {
         if (!status.canTransitionTo(target)) {
-            throw new BusinessException("Order %s cannot change from %s to %s".formatted(orderNumber, status, target));
+            throw new BusinessException("order.error.invalid-transition", orderNumber, status.label(), target.label());
         }
         OrderStatus previous = status;
         status = target;
@@ -157,6 +200,24 @@ public class Order extends AuditableEntity {
             }
         }
         recordHistory(previous, target, truncatedReason, actorId, at);
+    }
+
+    /**
+     * The payment of the cancelled order was returned to the customer; recorded in the timeline.
+     *
+     * @return {@code false} when the refund was already recorded
+     */
+    public boolean markRefunded(String refundId, String reason, Instant at) {
+        if (refundedAt != null) {
+            return false;
+        }
+        if (status != OrderStatus.CANCELLED) {
+            throw new BusinessException("order.error.refund-not-cancelled", orderNumber, status.label());
+        }
+        refundTransactionId = refundId;
+        refundedAt = at;
+        recordHistory(status, status, truncate(reason), null, at);
+        return true;
     }
 
     public boolean isOwnedBy(UUID candidateUserId) {

@@ -40,8 +40,20 @@ export function gatewayUnreachable(path: string): NextResponse {
   return errorJson(503, "SERVICE_UNAVAILABLE", "The API gateway cannot be reached", path);
 }
 
-/** Response headers of the gateway that are meaningful to the browser. */
-export const FORWARDED_RESPONSE_HEADERS = ["content-type", "retry-after", "x-correlation-id", "x-ratelimit-remaining"];
+/**
+ * Response headers of the gateway that are meaningful to the browser; the caching headers let the
+ * browser keep uploaded product images (served through /api/products/images/...).
+ */
+export const FORWARDED_RESPONSE_HEADERS = [
+  "content-type",
+  "cache-control",
+  "etag",
+  "last-modified",
+  "x-content-type-options",
+  "retry-after",
+  "x-correlation-id",
+  "x-ratelimit-remaining",
+];
 
 export function copyHeaders(from: Headers): Headers {
   const headers = new Headers();

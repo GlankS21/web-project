@@ -1,55 +1,58 @@
 # common-lib
 
-Thư viện dùng chung (jar thường, không phải ứng dụng Spring Boot) cho mọi service.
+Общая библиотека (обычный jar, не приложение Spring Boot) для всех сервисов.
 
-## Nội dung
+## Содержимое
 
-| Package | Mô tả |
+| Package | Описание |
 |---|---|
-| `constant` | `HeaderConstants` (X-Correlation-Id, X-User-Id...), `RoleConstants`, `MessagingConstants` (exchange, routing key, queue RabbitMQ), `LoggingConstants` |
+| `constant` | `HeaderConstants` (X-Correlation-Id, X-User-Id...), `RoleConstants`, `MessagingConstants` (exchange, routing key, очереди RabbitMQ), `LoggingConstants` |
 | `dto` | `ApiResponse<T>`, `ErrorResponse`, `FieldViolation`, `PageResponse<T>` |
-| `event` | Hợp đồng sự kiện RabbitMQ (record): `OrderCreatedEvent`, `StockReservedEvent`, `StockReservationFailedEvent`, `StockReleasedEvent`, `PaymentRequestedEvent`, `PaymentSucceededEvent`, `PaymentFailedEvent`, `OrderConfirmedEvent`, `OrderCancelledEvent`, `UserRegisteredEvent`, `ProductCreatedEvent` |
-| `exception` | `ErrorCode` + các exception nghiệp vụ: `ResourceNotFoundException`, `BadRequestException`, `ConflictException`, `BusinessException`, `UnauthorizedException`, `ForbiddenException`, `ServiceUnavailableException` |
-| `web` | `AbstractGlobalExceptionHandler` — xử lý lỗi chuẩn hoá thành `ErrorResponse` |
-| `logging` | Filter/interceptor/post-processor truyền correlation id qua HTTP, Feign, RabbitMQ |
-| `autoconfigure` | Spring Boot auto-configuration, tự kích hoạt theo classpath |
+| `event` | Контракты событий RabbitMQ (record): `OrderCreatedEvent`, `StockReservedEvent`, `StockReservationFailedEvent`, `StockReleasedEvent`, `PaymentRequestedEvent`, `PaymentSucceededEvent`, `PaymentFailedEvent`, `OrderConfirmedEvent`, `OrderCancelledEvent`, `UserRegisteredEvent`, `ProductCreatedEvent` |
+| `exception` | `ErrorCode` + бизнес-исключения: `ResourceNotFoundException`, `BadRequestException`, `ConflictException`, `BusinessException`, `UnauthorizedException`, `ForbiddenException`, `ServiceUnavailableException` |
+| `web` | `AbstractGlobalExceptionHandler` — обработка ошибок с приведением к `ErrorResponse` |
+| `logging` | Filter/interceptor/post-processor для передачи correlation id через HTTP, Feign, RabbitMQ |
+| `autoconfigure` | Auto-configuration Spring Boot, включается автоматически по classpath |
+
+Общие тексты сообщений об ошибках находятся в `src/main/resources/common-messages_ru.properties` (на русском);
+каждый сервис дополняет их своим `messages_ru.properties`, локаль по умолчанию — ru-RU.
 
 ## Auto-configuration
 
-Chỉ cần thêm dependency `common-lib`, không phải khai báo bean:
+Достаточно добавить зависимость `common-lib`, объявлять bean не нужно:
 
-| Điều kiện | Bean được đăng ký |
+| Условие | Регистрируемый bean |
 |---|---|
-| Ứng dụng servlet | `CorrelationIdFilter` (chạy trước Spring Security) |
-| Có OpenFeign | `CorrelationIdFeignInterceptor` |
-| Có Spring AMQP | `Jackson2JsonMessageConverter` (trusted package `com.shop.common.event`), gắn correlation id khi publish, khôi phục vào MDC khi consume |
+| Servlet-приложение | `CorrelationIdFilter` (выполняется до Spring Security) |
+| Есть OpenFeign | `CorrelationIdFeignInterceptor` |
+| Есть Spring AMQP | `Jackson2JsonMessageConverter` (trusted package `com.shop.common.event`), добавляет correlation id при публикации, восстанавливает его в MDC при потреблении |
 
-Các dependency web/validation/amqp/feign/spring-data được khai báo `optional`, service nào cần
-thì tự thêm vào pom của mình.
+Зависимости web/validation/amqp/feign/spring-data объявлены как `optional`; сервис, которому они нужны,
+добавляет их в свой pom сам.
 
-## Dùng GlobalExceptionHandler
+## Использование GlobalExceptionHandler
 
 ```java
 @RestControllerAdvice
 public class GlobalExceptionHandler extends AbstractGlobalExceptionHandler {
-    // thêm handler riêng của service (AccessDeniedException, DataIntegrityViolationException...)
+    // добавьте собственные обработчики сервиса (AccessDeniedException, DataIntegrityViolationException...)
 }
 ```
 
-## Luồng Saga (hợp đồng sự kiện)
+## Поток Saga (контракт событий)
 
 ```
 order.created ──► inventory ──► stock.reserved ──► order ──► order.payment-requested ──► payment
               │          └────► stock.reservation-failed ──► order (CANCELLED)
-              └──► cart (xoá sản phẩm đã đặt), notification
+              └──► cart (удаление заказанных товаров), notification
 payment.succeeded ──► order (PAID) ──► order.confirmed ──► inventory (commit), notification
-payment.failed    ──► order (CANCELLED) ──► order.cancelled ──► inventory (release), payment (hoàn tiền /
-                                                              chặn thanh toán muộn), notification
+payment.failed    ──► order (CANCELLED) ──► order.cancelled ──► inventory (release), payment (возврат денег /
+                                                              блокировка поздней оплаты), notification
 ```
 
-Đơn bị huỷ bởi khách, admin hay job hết hạn thanh toán cũng phát `order.cancelled` như trên.
+Заказ, отменённый покупателем, администратором или задачей по истечении срока оплаты, тоже публикует `order.cancelled`, как показано выше.
 
-Ngoài Saga: `user.registered` (auth → user, notification), `product.created` (product → inventory).
+Вне Saga: `user.registered` (auth → user, notification), `product.created` (product → inventory).
 
 | Exchange | Producer | Routing key |
 |---|---|---|
@@ -59,9 +62,9 @@ Ngoài Saga: `user.registered` (auth → user, notification), `product.created` 
 | `shop.user.events` | auth-service | `user.registered` |
 | `shop.product.events` | product-service | `product.created` |
 
-Queue (mỗi queue có `<queue>.dlq`, tên nằm trong `MessagingConstants`):
+Очереди (у каждой есть `<queue>.dlq`, имена находятся в `MessagingConstants`):
 
-| Service | Queue ← routing key |
+| Сервис | Очередь ← routing key |
 |---|---|
 | inventory-service | `inventory.order-created`, `inventory.order-confirmed`, `inventory.order-cancelled`, `inventory.product-created` |
 | order-service | `order.stock-reserved`, `order.stock-reservation-failed`, `order.payment-succeeded`, `order.payment-failed` |
@@ -70,9 +73,9 @@ Queue (mỗi queue có `<queue>.dlq`, tên nằm trong `MessagingConstants`):
 | user-service | `user.user-registered` ← `user.registered` |
 | notification-service | `notification.order-events` ← `order.created`, `order.confirmed`, `order.cancelled`; `notification.user-events` ← `user.registered` |
 
-notification-service dùng một queue cho mỗi exchange nguồn; listener chọn handler theo kiểu sự kiện trong header `__TypeId__`.
+notification-service использует по одной очереди на каждый exchange-источник; listener выбирает обработчик по типу события из заголовка `__TypeId__`.
 
-## Build & test
+## Сборка и тесты
 
 ```bash
 cd backend

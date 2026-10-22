@@ -1,16 +1,22 @@
 import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
 import { AddressBook } from "@/components/account/AddressBook";
 import { PageTitle } from "@/components/ui";
 import { apiGet } from "@/lib/server/data";
 import type { Address } from "@/lib/types";
 
-export const metadata: Metadata = { title: "Sổ địa chỉ" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getTranslations("addresses"))("title") };
+}
 
 export default async function AddressesPage() {
-  const addresses = await apiGet<Address[]>("/api/users/me/addresses", { auth: true });
+  const [addresses, t] = await Promise.all([
+    apiGet<Address[]>("/api/users/me/addresses", { auth: true }),
+    getTranslations("addresses"),
+  ]);
   return (
     <>
-      <PageTitle>Sổ địa chỉ</PageTitle>
+      <PageTitle>{t("title")}</PageTitle>
       <AddressBook addresses={addresses} />
     </>
   );

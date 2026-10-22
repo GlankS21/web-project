@@ -1,40 +1,40 @@
 # discovery-server
 
-Netflix Eureka Server — service registry. Port mặc định: **8761**.
+Netflix Eureka Server — реестр сервисов. Порт по умолчанию: **8761**.
 
-Đây là hạ tầng nền nên service này tự chứa cấu hình, không lấy cấu hình từ config-server
-(tránh phụ thuộc vòng khi khởi động).
+Это базовая инфраструктура, поэтому сервис содержит собственную конфигурацию и не получает её из config-server
+(чтобы избежать циклической зависимости при запуске).
 
-## Bảo mật
+## Безопасность
 
-Dashboard và REST API `/eureka/**` yêu cầu HTTP Basic với `EUREKA_USERNAME` / `EUREKA_PASSWORD`.
-Các client đăng ký qua URL có kèm credentials (cấu hình chung trong config-repo):
+Dashboard и REST API `/eureka/**` требуют HTTP Basic с `EUREKA_USERNAME` / `EUREKA_PASSWORD`.
+Клиенты регистрируются по URL с учётными данными (общая конфигурация в config-repo):
 
 ```
 http://${EUREKA_USERNAME}:${EUREKA_PASSWORD}@discovery-server:8761/eureka/
 ```
 
-## Profile
+## Профили
 
-| Profile | Khác biệt |
+| Профиль | Отличия |
 |---|---|
-| `dev` (mặc định) | tắt self-preservation, loại instance chết sau ~5s, đọc `.env` |
-| `docker` | hostname `discovery-server`, self-preservation bật (đổi bằng `EUREKA_SELF_PRESERVATION`) |
+| `dev` (по умолчанию) | self-preservation выключен, упавшие экземпляры удаляются примерно через 5 с, читает `.env` |
+| `docker` | hostname `discovery-server`, self-preservation включён (меняется через `EUREKA_SELF_PRESERVATION`) |
 
-## Biến môi trường
+## Переменные окружения
 
-| Biến | Bắt buộc | Mặc định |
+| Переменная | Обязательна | По умолчанию |
 |---|---|---|
 | `EUREKA_USERNAME` | ✔ | |
 | `EUREKA_PASSWORD` | ✔ | |
 | `DISCOVERY_SERVER_PORT` | | `8761` |
 | `EUREKA_HOSTNAME` | | `localhost` / `discovery-server` |
 
-## Chạy & kiểm tra
+## Запуск и проверка
 
 ```bash
 cd backend
-./mvnw install -DskipTests                 # lần đầu: cài common-lib vào ~/.m2
+./mvnw install -DskipTests                 # первый раз: установка common-lib в ~/.m2
 ./mvnw -pl discovery-server spring-boot:run
 
 curl http://localhost:8761/actuator/health

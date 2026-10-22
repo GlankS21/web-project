@@ -12,5 +12,8 @@ public enum MovementType {
     RELEASE,
 
     /** Reserved units left the warehouse after the order was paid. */
-    SALE
+    SALE,
+
+    /** Sold units came back to the stock after a paid order was cancelled before shipping. */
+    RETURN
 }

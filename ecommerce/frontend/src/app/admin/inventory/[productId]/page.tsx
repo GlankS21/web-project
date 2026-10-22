@@ -1,15 +1,18 @@
 import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { StockForms } from "@/components/admin/StockForms";
 import { Pagination, pageIndex } from "@/components/Pagination";
 import { Badge, PageTitle } from "@/components/ui";
-import { formatDateTime, MOVEMENT_TYPE } from "@/lib/format";
+import { formatDateTime } from "@/lib/format";
 import { apiGet, apiGetOrNotFound, query } from "@/lib/server/data";
 import { param, positiveInt, type SearchParams } from "@/lib/search-params";
 import type { InventoryItem, PageResponse, Product, StockMovement } from "@/lib/types";
 
-export const metadata: Metadata = { title: "Tồn kho sản phẩm" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getTranslations("adminInventory"))("itemMetaTitle") };
+}
 
 interface Props {
   params: Promise<{ productId: string }>;
@@ -22,10 +25,12 @@ export default async function InventoryItemPage({ params, searchParams }: Props)
     notFound();
   }
   const page = pageIndex(param(await searchParams, "page"));
-  const [item, product, movements] = await Promise.all([
+  const [item, product, movements, t, tMovement] = await Promise.all([
     apiGetOrNotFound<InventoryItem>(`/api/inventory/${productId}`, { auth: true }),
     apiGet<Product>(`/api/products/${productId}`, { auth: true }).catch(() => null),
     apiGet<PageResponse<StockMovement>>(`/api/inventory/${productId}/movements${query({ page, size: 20 })}`, { auth: true }),
+    getTranslations("adminInventory"),
+    getTranslations("movementType"),
   ]);
 
   const signed = (value: number) => (value > 0 ? `+${value}` : value === 0 ? "0" : String(value));
@@ -33,28 +38,28 @@ export default async function InventoryItemPage({ params, searchParams }: Props)
   return (
     <>
       <Link href="/admin/inventory" className="link text-sm">
-        ← Tồn kho
+        {t("back")}
       </Link>
       <div className="mt-3">
         <PageTitle
           actions={
             product && (
               <Link href={`/admin/products/${productId}`} className="link text-sm">
-                Sửa sản phẩm
+                {t("editProduct")}
               </Link>
             )
           }
         >
-          {product?.name ?? `Sản phẩm #${productId}`}
+          {product?.name ?? t("productFallback", { id: productId })}
         </PageTitle>
       </div>
 
       <dl className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">
         {[
-          ["Tồn thực tế", item.quantityOnHand],
-          ["Đang giữ cho đơn", item.quantityReserved],
-          ["Có thể bán", item.availableQuantity],
-          ["Ngưỡng cảnh báo", item.lowStockThreshold],
+          [t("onHand"), item.quantityOnHand],
+          [t("reservedForOrders"), item.quantityReserved],
+          [t("available"), item.availableQuantity],
+          [t("threshold"), item.lowStockThreshold],
         ].map(([label, value]) => (
           <div key={label} className="card p-4">
             <dt className="text-sm text-slate-500">{label}</dt>
@@ -67,16 +72,16 @@ export default async function InventoryItemPage({ params, searchParams }: Props)
 
       <section className="card mt-8 overflow-x-auto" aria-labelledby="movements-title">
         <h2 id="movements-title" className="p-4 font-semibold text-slate-900">
-          Lịch sử biến động
+          {t("movements")}
         </h2>
         <table className="table">
           <thead>
             <tr>
-              <th>Thời gian</th>
-              <th>Loại</th>
-              <th className="text-right">Tồn thực tế</th>
-              <th className="text-right">Đang giữ</th>
-              <th>Tham chiếu / lý do</th>
+              <th>{t("movementTime")}</th>
+              <th>{t("movementType")}</th>
+              <th className="text-right">{t("onHand")}</th>
+              <th className="text-right">{t("reserved")}</th>
+              <th>{t("movementReason")}</th>
             </tr>
           </thead>
           <tbody>
@@ -84,7 +89,7 @@ export default async function InventoryItemPage({ params, searchParams }: Props)
               <tr key={movement.id}>
                 <td className="whitespace-nowrap text-slate-500">{formatDateTime(movement.createdAt)}</td>
                 <td>
-                  <Badge>{MOVEMENT_TYPE[movement.type]}</Badge>
+                  <Badge>{tMovement(movement.type)}</Badge>
                 </td>
                 <td className="text-right whitespace-nowrap">
                   {signed(movement.onHandChange)} → {movement.onHandAfter}
@@ -99,7 +104,7 @@ export default async function InventoryItemPage({ params, searchParams }: Props)
             ))}
           </tbody>
         </table>
-        {movements.content.length === 0 && <p className="p-4 text-sm text-slate-500">Chưa có biến động.</p>}
+        {movements.content.length === 0 && <p className="p-4 text-sm text-slate-500">{t("noMovements")}</p>}
       </section>
       <Pagination page={movements.page} totalPages={movements.totalPages} basePath={`/admin/inventory/${productId}`} params={{}} />
     </>

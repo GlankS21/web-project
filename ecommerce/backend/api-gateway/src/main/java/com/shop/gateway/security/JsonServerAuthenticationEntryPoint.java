@@ -18,14 +18,16 @@ import reactor.core.publisher.Mono;
 @RequiredArgsConstructor
 public class JsonServerAuthenticationEntryPoint implements ServerAuthenticationEntryPoint {
 
+    static final String INVALID_TOKEN_KEY = "gateway.error.invalid-token";
+
     private final ErrorResponseWriter errorResponseWriter;
 
     @Override
     public Mono<Void> commence(ServerWebExchange exchange, AuthenticationException ex) {
-        String message = ex instanceof InvalidBearerTokenException
-                ? "Access token is invalid or expired"
-                : ErrorCode.UNAUTHORIZED.getDefaultMessage();
+        String messageKey = ex instanceof InvalidBearerTokenException
+                ? INVALID_TOKEN_KEY
+                : ErrorCode.messageKeyOf(ErrorCode.UNAUTHORIZED);
         exchange.getResponse().getHeaders().set(HttpHeaders.WWW_AUTHENTICATE, "Bearer");
-        return errorResponseWriter.write(exchange, ErrorCode.UNAUTHORIZED, message);
+        return errorResponseWriter.write(exchange, ErrorCode.UNAUTHORIZED, messageKey);
     }
 }

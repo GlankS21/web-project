@@ -11,6 +11,7 @@ import com.shop.cart.entity.Cart;
 import com.shop.cart.entity.CartItem;
 import com.shop.cart.repository.CartRepository;
 import com.shop.cart.service.CartService;
+import com.shop.cart.util.RussianPlural;
 import com.shop.common.event.OrderCreatedEvent;
 import com.shop.common.event.OrderItemPayload;
 import com.shop.common.exception.BadRequestException;
@@ -41,6 +42,13 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class CartServiceImpl implements CartService {
 
+    static final String TOO_MANY_PRODUCTS = "cart.error.too-many-products";
+    static final String QUANTITY_LIMIT = "cart.error.quantity-limit";
+    static final String PRODUCT_NOT_AVAILABLE = "cart.error.product-not-available";
+    static final String OUT_OF_STOCK = "cart.error.out-of-stock";
+    static final String INSUFFICIENT_STOCK = "cart.error.insufficient-stock";
+    static final String NOT_IN_CART = "cart.error.not-in-cart";
+
     private final CartRepository cartRepository;
     private final ProductCatalog productCatalog;
     private final CartProperties properties;
@@ -63,8 +71,8 @@ public class CartServiceImpl implements CartService {
             CartItem item = cart.findItem(product.id()).orElse(null);
             if (item == null) {
                 if (cart.getItems().size() >= properties.maxItems()) {
-                    throw new BusinessException("A cart can contain at most %d different products"
-                            .formatted(properties.maxItems()));
+                    throw new BusinessException(TOO_MANY_PRODUCTS, properties.maxItems(),
+                            RussianPlural.category(properties.maxItems()));
                 }
                 item = new CartItem();
                 item.setProductId(product.id());
@@ -198,7 +206,7 @@ public class CartServiceImpl implements CartService {
     private ProductSummary requireSellable(Long productId) {
         ProductSummary product = productCatalog.findSellableProducts(List.of(productId)).get(productId);
         if (product == null) {
-            throw new BusinessException("Product %d is not available for sale".formatted(productId));
+            throw new BusinessException(PRODUCT_NOT_AVAILABLE);
         }
         return product;
     }
@@ -213,15 +221,15 @@ public class CartServiceImpl implements CartService {
      */
     private void checkQuantity(ProductSummary product, int quantity, Optional<Integer> available) {
         if (quantity > properties.maxQuantityPerItem()) {
-            throw new BadRequestException("At most %d units of a product can be put in the cart"
-                    .formatted(properties.maxQuantityPerItem()));
+            throw new BadRequestException(QUANTITY_LIMIT, properties.maxQuantityPerItem(),
+                    RussianPlural.category(properties.maxQuantityPerItem()));
         }
         available.ifPresent(units -> {
             if (units <= 0) {
-                throw new BusinessException("%s is out of stock".formatted(product.name()));
+                throw new BusinessException(OUT_OF_STOCK, product.name());
             }
             if (quantity > units) {
-                throw new BusinessException("Only %d unit(s) of %s are available".formatted(units, product.name()));
+                throw new BusinessException(INSUFFICIENT_STOCK, product.name(), units, RussianPlural.category(units));
             }
         });
     }
@@ -241,6 +249,6 @@ public class CartServiceImpl implements CartService {
     }
 
     private static ResourceNotFoundException notInCart(Long productId) {
-        return new ResourceNotFoundException("Product %d is not in the cart".formatted(productId));
+        return ResourceNotFoundException.of(NOT_IN_CART);
     }
 }

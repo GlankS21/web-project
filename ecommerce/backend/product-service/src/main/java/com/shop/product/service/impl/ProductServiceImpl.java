@@ -62,7 +62,7 @@ public class ProductServiceImpl implements ProductService {
         validateSort(pageable.getSort());
         if (criteria.minPrice() != null && criteria.maxPrice() != null
                 && criteria.minPrice().compareTo(criteria.maxPrice()) > 0) {
-            throw new BadRequestException("minPrice must not be greater than maxPrice");
+            throw new BadRequestException("product.error.price-range");
         }
 
         List<Long> categoryIds = null;
@@ -89,7 +89,7 @@ public class ProductServiceImpl implements ProductService {
     public ProductResponse getProduct(Long productId, boolean includeHidden) {
         return visible(productRepository.findWithDetailsById(productId), includeHidden)
                 .map(this::toResponse)
-                .orElseThrow(() -> new ResourceNotFoundException("Product", "id", productId));
+                .orElseThrow(() -> ResourceNotFoundException.of("product.error.not-found"));
     }
 
     @Override
@@ -97,7 +97,7 @@ public class ProductServiceImpl implements ProductService {
     public ProductResponse getProductBySlug(String slug, boolean includeHidden) {
         return visible(productRepository.findWithDetailsBySlug(slug), includeHidden)
                 .map(this::toResponse)
-                .orElseThrow(() -> new ResourceNotFoundException("Product", "slug", slug));
+                .orElseThrow(() -> ResourceNotFoundException.of("product.error.not-found"));
     }
 
     @Override
@@ -108,7 +108,7 @@ public class ProductServiceImpl implements ProductService {
             return List.of();
         }
         if (ids.size() > MAX_BATCH_SIZE) {
-            throw new BadRequestException("At most %d product ids can be requested at once".formatted(MAX_BATCH_SIZE));
+            throw new BadRequestException("product.error.too-many-ids", String.valueOf(MAX_BATCH_SIZE));
         }
         List<Product> products = includeHidden
                 ? productRepository.findAllByIdIn(ids)
@@ -125,7 +125,7 @@ public class ProductServiceImpl implements ProductService {
     @Transactional
     public ProductResponse createProduct(ProductRequest request) {
         if (productRepository.existsBySku(request.sku())) {
-            throw new ConflictException("A product with SKU '%s' already exists".formatted(request.sku()));
+            throw new ConflictException("product.error.sku-taken", request.sku());
         }
         validatePrices(request.price(), request.compareAtPrice());
 
@@ -149,7 +149,7 @@ public class ProductServiceImpl implements ProductService {
     public ProductResponse updateProduct(Long productId, ProductRequest request) {
         Product product = findProduct(productId);
         if (!product.getSku().equals(request.sku())) {
-            throw new BadRequestException("The SKU of a product cannot be changed");
+            throw new BadRequestException("product.error.sku-immutable");
         }
         validatePrices(request.price(), request.compareAtPrice());
 
@@ -188,15 +188,15 @@ public class ProductServiceImpl implements ProductService {
     private void validateSort(Sort sort) {
         sort.forEach(order -> {
             if (!SORTABLE_PROPERTIES.contains(order.getProperty())) {
-                throw new BadRequestException("Products can be sorted by %s only"
-                        .formatted(String.join(", ", SORTABLE_PROPERTIES.stream().sorted().toList())));
+                throw new BadRequestException("product.error.unsupported-sort",
+                        String.join(", ", SORTABLE_PROPERTIES.stream().sorted().toList()));
             }
         });
     }
 
     private void validatePrices(BigDecimal price, BigDecimal compareAtPrice) {
         if (compareAtPrice != null && compareAtPrice.compareTo(price) <= 0) {
-            throw new BadRequestException("compareAtPrice must be greater than price");
+            throw new BadRequestException("product.error.compare-at-price-not-above-price");
         }
     }
 
@@ -218,7 +218,7 @@ public class ProductServiceImpl implements ProductService {
                 ? productRepository.existsBySlug(slug)
                 : productRepository.existsBySlugAndIdNot(slug, productId);
         if (taken) {
-            throw new ConflictException("A product with slug '%s' already exists".formatted(slug));
+            throw new ConflictException("product.error.slug-taken", slug);
         }
         return slug;
     }
@@ -237,12 +237,12 @@ public class ProductServiceImpl implements ProductService {
 
     private Category findCategory(Long categoryId) {
         return categoryRepository.findById(categoryId)
-                .orElseThrow(() -> new BadRequestException("Category %d does not exist".formatted(categoryId)));
+                .orElseThrow(() -> new BadRequestException("product.error.category-not-found", String.valueOf(categoryId)));
     }
 
     private Product findProduct(Long productId) {
         return productRepository.findWithDetailsById(productId)
-                .orElseThrow(() -> new ResourceNotFoundException("Product", "id", productId));
+                .orElseThrow(() -> ResourceNotFoundException.of("product.error.not-found"));
     }
 
     private ProductResponse toResponse(Product product) {

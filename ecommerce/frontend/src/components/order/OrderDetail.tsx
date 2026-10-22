@@ -1,16 +1,32 @@
+import { useTranslations } from "next-intl";
 import { formatAddress } from "@/components/address/AddressFields";
 import { StatusBadge, Thumb } from "@/components/ui";
-import { formatDateTime, formatMoney, ORDER_STATUS, PAYMENT_METHOD, PAYMENT_STATUS } from "@/lib/format";
+import {
+  formatDateTime,
+  formatMoney,
+  labelled,
+  ORDER_STATUS_TONE,
+  PAYMENT_STATUS_TONE,
+  TRANSACTION_STATUS_TONE,
+} from "@/lib/format";
+import { isInProgress } from "@/lib/orders";
+import { formatPhone } from "@/lib/phone";
+import { isKnownFailure } from "@/lib/payment-failure";
 import type { Order, Payment } from "@/lib/types";
 
 /** Order content shared by the customer and admin pages. */
 export function OrderDetail({ order, payment }: { order: Order; payment: Payment | null }) {
+  const t = useTranslations("order");
+  const tCommon = useTranslations("common");
+  const tOrderStatus = useTranslations("orderStatus");
+  const orderStatus = labelled(ORDER_STATUS_TONE, (value) => tOrderStatus(value));
+
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
-      <div className="flex flex-col gap-6">
+      <div className="flex min-w-0 flex-col gap-6">
         <section className="card p-5" aria-labelledby="items-title">
           <h2 id="items-title" className="mb-4 font-semibold text-slate-900">
-            Sản phẩm
+            {t("items")}
           </h2>
           <ul className="flex flex-col divide-y divide-slate-100">
             {order.items.map((item) => (
@@ -28,15 +44,21 @@ export function OrderDetail({ order, payment }: { order: Order; payment: Payment
           </ul>
           <dl className="mt-2 flex flex-col gap-2 border-t border-slate-100 pt-4 text-sm">
             <div className="flex justify-between">
-              <dt className="text-slate-600">Tạm tính</dt>
+              <dt className="text-slate-600">{tCommon("subtotal")}</dt>
               <dd>{formatMoney(order.subtotal, order.currency)}</dd>
             </div>
+            {order.discountAmount > 0 && (
+              <div className="flex justify-between text-emerald-700">
+                <dt>{t("discount", { code: order.couponCode ?? "" })}</dt>
+                <dd>−{formatMoney(order.discountAmount, order.currency)}</dd>
+              </div>
+            )}
             <div className="flex justify-between">
-              <dt className="text-slate-600">Phí vận chuyển</dt>
-              <dd>{order.shippingFee > 0 ? formatMoney(order.shippingFee, order.currency) : "Miễn phí"}</dd>
+              <dt className="text-slate-600">{tCommon("shippingFee")}</dt>
+              <dd>{order.shippingFee > 0 ? formatMoney(order.shippingFee, order.currency) : tCommon("free")}</dd>
             </div>
             <div className="flex justify-between text-base font-semibold">
-              <dt>Tổng cộng</dt>
+              <dt>{tCommon("total")}</dt>
               <dd className="text-accent-500">{formatMoney(order.totalAmount, order.currency)}</dd>
             </div>
           </dl>
@@ -44,7 +66,7 @@ export function OrderDetail({ order, payment }: { order: Order; payment: Payment
 
         <section className="card p-5" aria-labelledby="timeline-title">
           <h2 id="timeline-title" className="mb-4 font-semibold text-slate-900">
-            Lịch sử trạng thái
+            {t("history")}
           </h2>
           <ol className="relative ml-2 flex flex-col gap-5 border-l border-slate-200 pl-6">
             {order.statusHistory.map((entry, index) => (
@@ -55,63 +77,126 @@ export function OrderDetail({ order, payment }: { order: Order; payment: Payment
                   }`}
                 />
                 <div className="flex flex-wrap items-center gap-2">
-                  <StatusBadge value={entry.toStatus} labels={ORDER_STATUS} />
+                  <StatusBadge value={entry.toStatus} labels={orderStatus} />
                   <time className="text-xs text-slate-500">{formatDateTime(entry.createdAt)}</time>
                 </div>
-                {entry.reason && <p className="mt-1 text-sm text-slate-600">{entry.reason}</p>}
+                {entry.reason && <p className="mt-1 text-sm break-words text-slate-600">{entry.reason}</p>}
               </li>
             ))}
           </ol>
         </section>
       </div>
 
-      <aside className="flex flex-col gap-6">
+      <aside className="flex min-w-0 flex-col gap-6">
         <section className="card p-5 text-sm" aria-labelledby="shipping-title">
           <h2 id="shipping-title" className="mb-3 font-semibold text-slate-900">
-            Giao hàng
+            {t("delivery")}
           </h2>
           <p className="font-medium text-slate-900">{order.shippingAddress.recipientName}</p>
-          <p className="text-slate-600">{order.shippingAddress.phoneNumber}</p>
+          <p className="text-slate-600">{formatPhone(order.shippingAddress.phoneNumber)}</p>
           <p className="mt-1 text-slate-600">{formatAddress(order.shippingAddress)}</p>
-          {order.note && <p className="mt-3 rounded-lg bg-slate-50 p-3 text-slate-600">Ghi chú: {order.note}</p>}
+          {order.note && <p className="mt-3 rounded-lg bg-slate-50 p-3 text-slate-600">{t("note", { note: order.note })}</p>}
         </section>
 
-        <section className="card p-5 text-sm" aria-labelledby="payment-title">
-          <h2 id="payment-title" className="mb-3 font-semibold text-slate-900">
-            Thanh toán
-          </h2>
-          <p className="text-slate-700">{PAYMENT_METHOD[order.paymentMethod]}</p>
-          {payment ? (
-            <dl className="mt-3 flex flex-col gap-1.5">
-              <div className="flex items-center justify-between">
-                <dt className="text-slate-500">Trạng thái</dt>
-                <dd>
-                  <StatusBadge value={payment.status} labels={PAYMENT_STATUS} />
-                </dd>
-              </div>
-              {payment.transactionId && (
-                <div className="flex justify-between gap-2">
-                  <dt className="text-slate-500">Mã giao dịch</dt>
-                  <dd className="font-mono text-xs break-all">{payment.transactionId}</dd>
-                </div>
-              )}
-              {payment.refundTransactionId && (
-                <div className="flex justify-between gap-2">
-                  <dt className="text-slate-500">Mã hoàn tiền</dt>
-                  <dd className="font-mono text-xs break-all">{payment.refundTransactionId}</dd>
-                </div>
-              )}
-              {payment.failureReason && payment.status === "FAILED" && (
-                <p className="mt-1 text-rose-700">{payment.failureReason}</p>
-              )}
-            </dl>
-          ) : (
-            <p className="mt-2 text-slate-500">
-              {order.status === "PENDING" || order.status === "AWAITING_PAYMENT" ? "Đang chờ xử lý thanh toán…" : "Chưa có giao dịch."}
-            </p>
-          )}
-        </section>
+        <PaymentSummary order={order} payment={payment} />
       </aside>
     </div>
+  );
+}
+
+function PaymentSummary({ order, payment }: { order: Order; payment: Payment | null }) {
+  const t = useTranslations("order");
+  const tMethod = useTranslations("paymentMethod");
+  const tPaymentStatus = useTranslations("paymentStatus");
+  const tTransactionStatus = useTranslations("transactionStatus");
+  const tTransactionType = useTranslations("transactionType");
+  const tFailure = useTranslations("paymentFailure");
+  const paymentStatus = labelled(PAYMENT_STATUS_TONE, (value) => tPaymentStatus(value));
+  const transactionStatus = labelled(TRANSACTION_STATUS_TONE, (value) => tTransactionStatus(value));
+  const failure = (code: string | null) => (isKnownFailure(code) ? tFailure(code) : code);
+  // Charges are numbered as attempts: "Оплата · Попытка 2"
+  const attempts = new Map(
+    (payment?.transactions ?? [])
+      .filter((transaction) => transaction.type === "CHARGE")
+      .map((transaction, index) => [transaction.id, index + 1]),
+  );
+
+  return (
+    <section className="card p-5 text-sm" aria-labelledby="payment-title">
+      <h2 id="payment-title" className="mb-3 font-semibold text-slate-900">
+        {t("payment")}
+      </h2>
+      <p className="text-slate-700">{tMethod(order.paymentMethod)}</p>
+      {payment ? (
+        <>
+          <dl className="mt-3 flex flex-col gap-1.5">
+            <div className="flex items-center justify-between">
+              <dt className="text-slate-500">{t("paymentStatus")}</dt>
+              <dd>
+                <StatusBadge value={payment.status} labels={paymentStatus} />
+              </dd>
+            </div>
+            {payment.transactionId && (
+              <div className="flex justify-between gap-2">
+                <dt className="text-slate-500">{t("transactionId")}</dt>
+                <dd className="font-mono text-xs break-all">{payment.transactionId}</dd>
+              </div>
+            )}
+            {payment.paidAt && (
+              <div className="flex justify-between gap-2">
+                <dt className="text-slate-500">{t("paidAt")}</dt>
+                <dd>{formatDateTime(payment.paidAt)}</dd>
+              </div>
+            )}
+            {payment.refundTransactionId && (
+              <div className="flex justify-between gap-2">
+                <dt className="text-slate-500">{t("refundId")}</dt>
+                <dd className="font-mono text-xs break-all">{payment.refundTransactionId}</dd>
+              </div>
+            )}
+            {payment.refundedAt && (
+              <div className="flex justify-between gap-2">
+                <dt className="text-slate-500">{t("refundedAt")}</dt>
+                <dd>{formatDateTime(payment.refundedAt)}</dd>
+              </div>
+            )}
+          </dl>
+          {payment.failureReason && (payment.status === "FAILED" || payment.status === "REFUND_FAILED") && (
+            <p className="mt-2 text-rose-700">{failure(payment.failureReason)}</p>
+          )}
+          {payment.transactions.length > 0 && payment.provider !== "COD" && (
+            <div className="mt-4 border-t border-slate-100 pt-3">
+              <h3 className="mb-2 text-xs font-semibold tracking-wide text-slate-500 uppercase">{t("transactions")}</h3>
+              <ul className="flex flex-col gap-2">
+                {payment.transactions.map((transaction) => (
+                  <li key={transaction.id} className="rounded-lg bg-slate-50 p-2.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-medium text-slate-800">
+                        {transaction.type === "CHARGE"
+                          ? `${tTransactionType("CHARGE")} · ${t("attempt", { number: attempts.get(transaction.id) ?? 1 })}`
+                          : tTransactionType("REFUND")}
+                      </span>
+                      <StatusBadge value={transaction.status} labels={transactionStatus} />
+                    </div>
+                    <div className="mt-1 flex flex-wrap justify-between gap-2 text-xs text-slate-500">
+                      <span>{formatDateTime(transaction.createdAt)}</span>
+                      <span>
+                        {transaction.type === "REFUND" ? "−" : ""}
+                        {formatMoney(transaction.amount, transaction.currency)}
+                      </span>
+                    </div>
+                    {transaction.status === "FAILED" && transaction.failureReason && (
+                      <p className="mt-1 text-xs text-rose-700">{failure(transaction.failureReason)}</p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </>
+      ) : (
+        <p className="mt-2 text-slate-500">{isInProgress(order.status) ? t("waitingForPayment") : t("noPayment")}</p>
+      )}
+    </section>
   );
 }

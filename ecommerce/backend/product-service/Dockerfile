@@ -19,6 +19,8 @@ COPY --from=extract /extract/extracted/dependencies/ ./
 COPY --from=extract /extract/extracted/spring-boot-loader/ ./
 COPY --from=extract /extract/extracted/snapshot-dependencies/ ./
 COPY --from=extract /extract/extracted/application/ ./
+# Mount point of the product image volume; a fresh named volume copies this ownership
+RUN mkdir -p /data/product-images && chown -R app:app /data/product-images
 USER app
 EXPOSE 8083
 ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0"

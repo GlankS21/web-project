@@ -9,7 +9,8 @@ public final class PasswordPolicy {
     public static final int MIN_LENGTH = 8;
     public static final int MAX_LENGTH = 72;
     public static final String PATTERN = "^(?=.*[A-Za-z])(?=.*\\d).+$";
-    public static final String PATTERN_MESSAGE = "Password must contain at least one letter and one digit";
+    /** Key of the Bean Validation message in {@code messages_ru.properties}. */
+    public static final String PATTERN_MESSAGE = "{auth.validation.password-pattern}";
 
     private PasswordPolicy() {
     }

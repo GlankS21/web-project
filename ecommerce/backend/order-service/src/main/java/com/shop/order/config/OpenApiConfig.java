@@ -21,11 +21,11 @@ public class OpenApiConfig {
     public OpenAPI orderServiceOpenApi(@Value("${app.openapi.gateway-url:http://localhost:8080}") String gatewayUrl) {
         return new OpenAPI()
                 .info(new Info()
-                        .title("Order Service API")
+                        .title("API сервиса заказов")
                         .version("v1")
-                        .description("Checkout, order history and order management. An order is confirmed "
-                                + "asynchronously by the saga (stock reservation, then payment): poll the order "
-                                + "until its status is PAID or CANCELLED."))
+                        .description("Оформление заказов, история заказов и управление ими. Заказ подтверждается "
+                                + "асинхронно сагой (резервирование товара, затем оплата): запрашивайте заказ, "
+                                + "пока его статус не станет PAID или CANCELLED."))
                 .servers(List.of(new Server().url(gatewayUrl).description("API Gateway")))
                 .components(new Components().addSecuritySchemes(BEARER_SCHEME, new SecurityScheme()
                         .type(SecurityScheme.Type.HTTP)

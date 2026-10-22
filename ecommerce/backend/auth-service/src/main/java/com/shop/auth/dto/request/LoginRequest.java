@@ -7,11 +7,11 @@ import jakarta.validation.constraints.Size;
 
 public record LoginRequest(
 
-        @Schema(example = "john.doe@example.com")
+        @Schema(description = "E-mail аккаунта", example = "ivan.petrov@example.ru")
         @NotBlank @Email @Size(max = 255)
         String email,
 
-        @Schema(example = "Secret123")
+        @Schema(description = "Пароль", example = "Secret123")
         @NotBlank @Size(max = 72)
         String password
 ) {

@@ -59,7 +59,7 @@ public class InventoryItem extends AuditableEntity {
     public void reserve(int quantity) {
         requirePositive(quantity);
         if (quantity > availableQuantity()) {
-            throw new BusinessException("Only %d unit(s) of product %d are available".formatted(availableQuantity(), productId));
+            throw new BusinessException("inventory.error.insufficient-available", availableQuantity(), productId);
         }
         quantityReserved += quantity;
     }
@@ -82,13 +82,20 @@ public class InventoryItem extends AuditableEntity {
     }
 
     /**
+     * Units of a cancelled paid order go back to the stock.
+     */
+    public void restock(int quantity) {
+        requirePositive(quantity);
+        quantityOnHand += quantity;
+    }
+
+    /**
      * Manual correction; reserved units can never be removed.
      */
     public void adjust(int quantityChange) {
         int newOnHand = quantityOnHand + quantityChange;
         if (newOnHand < quantityReserved) {
-            throw new BusinessException("Stock of product %d cannot go below the %d reserved unit(s)"
-                    .formatted(productId, quantityReserved));
+            throw new BusinessException("inventory.error.below-reserved", productId, quantityReserved);
         }
         quantityOnHand = newOnHand;
     }

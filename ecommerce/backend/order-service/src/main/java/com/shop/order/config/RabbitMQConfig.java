@@ -61,6 +61,12 @@ public class RabbitMQConfig {
                 paymentExchange(), MessagingConstants.PAYMENT_FAILED_KEY);
     }
 
+    @Bean
+    public Declarables paymentRefundedQueue() {
+        return consumerQueue(MessagingConstants.ORDER_PAYMENT_REFUNDED_QUEUE,
+                paymentExchange(), MessagingConstants.PAYMENT_REFUNDED_KEY);
+    }
+
     private Declarables consumerQueue(String name, TopicExchange exchange, String routingKey) {
         Queue queue = RabbitTopology.queueWithDeadLetter(name);
         Queue deadLetterQueue = RabbitTopology.deadLetterQueue(name);

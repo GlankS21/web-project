@@ -1,61 +1,82 @@
 # payment-service
 
-Thanh toán đơn hàng (cổng thanh toán giả lập) và hoàn tiền khi đơn bị huỷ. Port mặc định: **8087**.
-Database: `payment_db`.
+Оплата заказов через **ЮKassa (API v3)** или её эмулятор, возврат денег при отмене оплаченного заказа,
+хранение истории всех транзакций и webhook. Валюта: **RUB**. Порт по умолчанию: **8087**. База данных: `payment_db`.
 
-## Cổng thanh toán giả lập
+## Провайдер: `PAYMENT_PROVIDER=yookassa|mock`
 
-`SimulatedPaymentGateway` thay cho nhà cung cấp thật, đủ xác định để thử cả hai nhánh Saga:
-
-| Phương thức | Kết quả |
-|---|---|
-| `COD` | Luôn chấp nhận (mã `COD-…`), tiền thu khi giao hàng |
-| `CARD`, `E_WALLET` | Từ chối nếu số tiền > `PAYMENT_SIMULATOR_MAX_AMOUNT` (mặc định 50.000.000) |
-| | Từ chối ngẫu nhiên với tỉ lệ `PAYMENT_SIMULATOR_FAILURE_RATE` (0.0–1.0, mặc định 0) |
-| | Còn lại: chấp nhận (mã `TXN-…`) |
-
-Muốn thấy nhánh thất bại: đặt đơn thẻ trên 50 triệu, hoặc đặt `PAYMENT_SIMULATOR_FAILURE_RATE=1.0`.
-Thay bằng cổng thật chỉ cần một implementation khác của `PaymentGateway` (dùng `orderId` làm idempotency key
-phía nhà cung cấp).
-
-## Saga (phía payment)
-
-| Nhận (queue) | Xử lý | Trả lời (exchange `shop.payment.events`) |
+| | `yookassa` | `mock` (по умолчанию) |
 |---|---|---|
-| `order.payment-requested` (`payment.payment-requested`) | Thu tiền, lưu `SUCCEEDED`/`FAILED` | `payment.succeeded` / `payment.failed` |
-| `order.cancelled` (`payment.order-cancelled`) | Đã thu → hoàn tiền (`REFUNDED`); chưa có thanh toán → lưu bản ghi chặn `CANCELLED` | — |
+| Создание payment | `POST /v3/payments`, `capture: true`, `confirmation: {type: "embedded", locale: "ru_RU"}`, заголовок `Idempotence-Key` | в памяти, id `mock-…` |
+| Где покупатель вводит карту | **Виджет ЮKassa**, встроенный прямо в страницу оформления заказа (инициализируется `confirmation_token`), с 3-D Secure | форма карты на сайте (вместо виджета), результат по **таблице тестовых карт ЮKassa** |
+| Как результат попадает в магазин | webhook (с повторной проверкой через API) + сайт вызывает `refresh`, когда виджет сообщает о завершении, + задача сверки | сразу при отправке формы |
+| Возврат | `POST /v3/refunds` (`Idempotence-Key`) + webhook `refund.succeeded` | успешен сразу |
 
-Đảm bảo tính đúng:
+В режиме `yookassa` номер карты **никогда не проходит через бэкенд магазина**; форма карты режима `mock` принимает только
+тестовые карты, не сохраняет и не логирует номер карты.
 
-- **Mỗi đơn tối đa một thanh toán**: unique `order_id` + khoá dòng. Yêu cầu gửi lại không thu tiền lần hai.
-- **Huỷ tới trước yêu cầu thanh toán** (đơn hết hạn trong lúc chờ): bản ghi `CANCELLED` khiến yêu cầu tới muộn
-  bị bỏ qua — đơn đã huỷ không bao giờ bị thu tiền.
-- **Thanh toán xong nhưng đơn đã huỷ**: order-service giữ đơn ở `CANCELLED` và phát `order.cancelled`,
-  payment-service hoàn tiền.
-- Kết quả gửi qua **transactional outbox** (publisher confirm), như inventory-service và order-service.
-- Lỗi xử lý: thử lại 3 lần rồi chuyển vào `<queue>.dlq`.
+`YOOKASSA_SHOP_ID` / `YOOKASSA_SECRET_KEY` читаются только из переменных окружения (значений по умолчанию нет); если они
+не заданы при `PAYMENT_PROVIDER=yookassa`, сервис не запускается.
+
+## Модель данных
+
+- `payments` — одна строка на заказ (unique `order_id` + блокировка строки ⇒ все обработчики идемпотентны): текущий статус,
+  `confirmation_token` ожидающей попытки, число попыток, `failure_reason` (код `cancellation_details.reason`).
+- `payment_transactions` — все операции у провайдера: `CHARGE` (каждая попытка, включая отклонённые карты) и `REFUND`;
+  id строки — это `Idempotence-Key`, отправленный в ЮKassa, `provider_id` — id payment/refund в ЮKassa, плюс сумма,
+  статус, причина отмены.
+- `payment_notifications` — все webhook с **исходным телом**, статусом обработки (`PROCESSED`, `DUPLICATE`, `IGNORED`,
+  `FAILED`) и связанной транзакцией.
+
+Статусы payment: `PENDING` → `SUCCEEDED` | `FAILED` (можно повторить с другой картой) → `REFUND_PENDING` → `REFUNDED` |
+`REFUND_FAILED`; `CANCELLED` (заказ отменён до списания денег или отменён заказ с COD).
+
+## Поток
+
+1. `order.payment-requested` → создание payment в ЮKassa (вне транзакции БД, идемпотентный ключ сохранён заранее) →
+   сохранение `confirmation_token`. COD принимается сразу (`payment.succeeded`).
+2. Фронтенд показывает виджет с токеном; виджет сообщает `success`/`fail` → фронтенд вызывает `POST /orders/{id}/refresh`.
+3. Webhook `payment.succeeded` / `payment.canceled` / `refund.succeeded`: тело сохраняется, **объект перечитывается через API
+   ЮKassa**, доверие только статусу из API. Повторно пришедшее уже обработанное финальное уведомление → помечается `DUPLICATE`, пропускается.
+   Объект не существует в ЮKassa → `404`; ЮKassa не отвечает → `503` (ЮKassa отправит повторно).
+4. `SUCCEEDED` → `payment.succeeded` (order → `PAID`, inventory списывает со склада).
+   `CANCELED` → попытка `FAILED` с причиной; заказ остаётся `AWAITING_PAYMENT`, покупатель нажимает «Оплатить другой картой»
+   (`POST /orders/{id}/retry`) — **новый заказ не создаётся**. Не более `max-attempts` (по умолчанию 5) попыток.
+5. `order.cancelled` (отмена покупателем/администратором до доставки или истечение срока оплаты): деньги списаны → создаётся refund
+   → `payment.refunded` (order сохраняет данные о возврате; inventory возвращает проданный товар на склад).
+   Деньги списаны *после* отмены заказа → автоматический возврат.
+6. `PaymentReconciliationJob` (каждую минуту) перечитывает транзакции, находящиеся в `PENDING` дольше 1 минуты, — это нужно,
+   когда webhook не может дойти до локальной машины; спустя 24 часа транзакция отбрасывается (`expired`).
+
+Причины отказа (`insufficient_funds`, `general_decline`, `card_expired`, `invalid_csc`, `3d_secure_failed`,
+`fraud_suspected`, `call_issuer`, …) фронтенд показывает на русском (`messages/ru.json`, группа `paymentFailure`).
 
 ## API
 
-| Method | Đường dẫn | Quyền | Mô tả |
+| Method | Путь | Права | Описание |
 |---|---|---|---|
-| GET | `/api/payments/orders/{orderId}` | chủ đơn / ADMIN | Thanh toán của một đơn (người khác → `404`) |
-| GET | `/api/payments?status=&page=&size=&sort=` | ADMIN | Danh sách thanh toán, lọc theo trạng thái |
+| GET | `/api/payments/orders/{orderId}` | владелец заказа / ADMIN | Платёж + история транзакций (другой пользователь → `404`) |
+| POST | `/api/payments/orders/{orderId}/retry` | владелец заказа | Новая попытка (другая карта) после отказа; возвращает новый `confirmationToken` |
+| POST | `/api/payments/orders/{orderId}/refresh` | владелец заказа / ADMIN | Запрос статуса ожидающих транзакций из ЮKassa |
+| GET | `/api/payments?status=&page=&size=&sort=` | ADMIN | Список платежей |
+| POST | `/api/payments/webhooks/yookassa` | публично | Webhook ЮKassa (только при `yookassa`) |
+| POST | `/api/payments/mock/{paymentId}/pay` | владелец заказа | Эмулированная форма карты `{cardNumber, expiry: "MM/YY", cvc, threeDSecureCode?}` (только при `mock`) |
 
-Trạng thái: `SUCCEEDED`, `FAILED`, `REFUNDED`, `CANCELLED` (bản ghi chặn, không có số tiền).
+## Переменные окружения
 
-## Biến môi trường
+`CONFIG_SERVER_*`, `EUREKA_*`, `RABBITMQ_*`, `JWT_SECRET`, `PAYMENT_DB_PASSWORD`, `PAYMENT_PROVIDER`;
+для ЮKassa: `YOOKASSA_SHOP_ID`, `YOOKASSA_SECRET_KEY`. Инструкция по созданию тестового магазина, webhook через ngrok и таблица
+тестовых карт: см. [корневой README](../../README.md#оплата-через-юkassa-тестовый-режим).
 
-`CONFIG_SERVER_*`, `EUREKA_*`, `RABBITMQ_*`, `JWT_SECRET`, `PAYMENT_DB_PASSWORD`; tuỳ chọn:
-`PAYMENT_SERVICE_PORT`, `PAYMENT_SIMULATOR_MAX_AMOUNT`, `PAYMENT_SIMULATOR_FAILURE_RATE`.
-
-## Test
+## Тесты
 
 ```bash
 cd backend
-./mvnw -pl payment-service test
+./mvnw -pl payment-service verify
 ```
 
-- Unit test: `SimulatedPaymentGatewayTest`, `PaymentServiceImplTest`
-- Testcontainers: `PaymentSagaIntegrationTest` — thu tiền một lần dù yêu cầu bị gửi lại, hoàn tiền khi huỷ,
-  từ chối vượt hạn mức, chặn thanh toán của đơn đã huỷ
+- Unit: `PaymentServiceImplTest` (списание, проверка webhook, защита от дублей, повторные попытки, возврат, сверка),
+  `YooKassaPaymentGatewayTest` (реальные request/response API v3 через `MockRestServiceServer`),
+  `MockPaymentGatewayTest` (таблица тестовых карт, 3-D Secure)
+- Testcontainers: `PaymentSagaIntegrationTest` (отклонённая карта → другая карта → 3-D Secure → отмена → возврат),
+  `YooKassaWebhookIntegrationTest` (webhook без токена, доверие только API, исходное тело сохраняется, дубликаты уведомлений пропускаются)

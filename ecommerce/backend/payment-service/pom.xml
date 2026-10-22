@@ -13,7 +13,7 @@
     <artifactId>payment-service</artifactId>
     <packaging>jar</packaging>
     <name>payment-service</name>
-    <description>Payments of orders through a simulated payment gateway</description>
+    <description>Payments of orders through YooKassa (or a local mock provider)</description>
 
     <dependencies>
         <dependency>

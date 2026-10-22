@@ -7,19 +7,20 @@ import type {
   PaymentMethod,
   PaymentStatus,
   ProductStatus,
+  TransactionStatus,
 } from "./types";
+import { INTL_LOCALE, TIME_ZONE } from "@/i18n/config";
 
-const LOCALE = "vi-VN";
-const ZERO_DECIMAL_CURRENCIES = new Set(["VND", "JPY", "KRW"]);
+const ZERO_DECIMAL_CURRENCIES = new Set(["JPY", "KRW"]);
 
-/** 25140000 VND → "25.140.000 ₫"; null → "—". */
-export function formatMoney(amount: number | null | undefined, currency: string | null | undefined = "VND"): string {
+/** 1234.5 RUB → "1 234,50 ₽"; null → "—". */
+export function formatMoney(amount: number | null | undefined, currency: string | null | undefined = "RUB"): string {
   if (amount === null || amount === undefined) {
     return "—";
   }
-  const code = currency ?? "VND";
+  const code = currency ?? "RUB";
   const digits = ZERO_DECIMAL_CURRENCIES.has(code) ? 0 : 2;
-  return new Intl.NumberFormat(LOCALE, {
+  return new Intl.NumberFormat(INTL_LOCALE, {
     style: "currency",
     currency: code,
     minimumFractionDigits: digits,
@@ -27,30 +28,30 @@ export function formatMoney(amount: number | null | undefined, currency: string 
   }).format(amount);
 }
 
+// Explicit fields give dd.MM.yyyy whatever the default style of the locale
+const DATE_FIELDS = { day: "2-digit", month: "2-digit", year: "numeric" } as const;
+
 /** Date and time in the shop's time zone (the server may run in UTC). */
 export function formatDateTime(value: string | null | undefined): string {
   if (!value) {
     return "—";
   }
-  // Explicit fields: the "short" date style of vi-VN has a two-digit year
-  return new Intl.DateTimeFormat(LOCALE, {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
+  // "21.10.2026, 13:00"
+  return new Intl.DateTimeFormat(INTL_LOCALE, {
+    ...DATE_FIELDS,
     hour: "2-digit",
     minute: "2-digit",
     hourCycle: "h23",
-    timeZone: "Asia/Ho_Chi_Minh",
+    timeZone: TIME_ZONE,
   }).format(new Date(value));
 }
 
+/** "21.10.2026" */
 export function formatDate(value: string | null | undefined): string {
   if (!value) {
     return "—";
   }
-  return new Intl.DateTimeFormat(LOCALE, { dateStyle: "medium", timeZone: "Asia/Ho_Chi_Minh" }).format(
-    new Date(value),
-  );
+  return new Intl.DateTimeFormat(INTL_LOCALE, { ...DATE_FIELDS, timeZone: TIME_ZONE }).format(new Date(value));
 }
 
 /** Percentage saved against the crossed-out price, or null when there is no discount. */
@@ -68,58 +69,66 @@ interface Label {
   tone: Tone;
 }
 
-export const ORDER_STATUS: Record<OrderStatus, Label> = {
-  PENDING: { label: "Đang giữ hàng", tone: "info" },
-  AWAITING_PAYMENT: { label: "Chờ thanh toán", tone: "warning" },
-  PAID: { label: "Đã thanh toán", tone: "success" },
-  SHIPPED: { label: "Đang giao", tone: "info" },
-  DELIVERED: { label: "Đã giao", tone: "success" },
-  CANCELLED: { label: "Đã huỷ", tone: "danger" },
+/** Gives each value of a status its translated label, e.g. `labelled(PAYMENT_STATUS_TONE, t)`. */
+export function labelled<K extends string>(tones: Record<K, Tone>, label: (value: K) => string): Record<K, Label> {
+  return Object.fromEntries(
+    (Object.keys(tones) as K[]).map((value) => [value, { label: label(value), tone: tones[value] }]),
+  ) as Record<K, Label>;
+}
+
+export const ORDER_STATUS_TONE: Record<OrderStatus, Tone> = {
+  PENDING: "info",
+  AWAITING_PAYMENT: "warning",
+  PAID: "success",
+  SHIPPED: "info",
+  DELIVERED: "success",
+  CANCELLED: "danger",
 };
 
-export const PAYMENT_METHOD: Record<PaymentMethod, string> = {
-  COD: "Thanh toán khi nhận hàng (COD)",
-  CARD: "Thẻ ngân hàng",
-  E_WALLET: "Ví điện tử",
+export const PAYMENT_METHODS: PaymentMethod[] = ["ONLINE", "COD"];
+
+export const PAYMENT_STATUS_TONE: Record<PaymentStatus, Tone> = {
+  PENDING: "warning",
+  SUCCEEDED: "success",
+  FAILED: "danger",
+  REFUND_PENDING: "warning",
+  REFUNDED: "info",
+  REFUND_FAILED: "danger",
+  CANCELLED: "neutral",
 };
 
-export const PAYMENT_STATUS: Record<PaymentStatus, Label> = {
-  SUCCEEDED: { label: "Thành công", tone: "success" },
-  FAILED: { label: "Thất bại", tone: "danger" },
-  REFUNDED: { label: "Đã hoàn tiền", tone: "info" },
-  CANCELLED: { label: "Không thu tiền", tone: "neutral" },
+export const TRANSACTION_STATUS_TONE: Record<TransactionStatus, Tone> = {
+  PENDING: "warning",
+  SUCCEEDED: "success",
+  FAILED: "danger",
 };
 
-export const PRODUCT_STATUS: Record<ProductStatus, Label> = {
-  DRAFT: { label: "Nháp", tone: "neutral" },
-  ACTIVE: { label: "Đang bán", tone: "success" },
-  ARCHIVED: { label: "Ngừng bán", tone: "danger" },
+export const PRODUCT_STATUS_TONE: Record<ProductStatus, Tone> = {
+  DRAFT: "neutral",
+  ACTIVE: "success",
+  ARCHIVED: "danger",
 };
 
-export const CART_ITEM_STATUS: Record<CartItemStatus, Label> = {
-  AVAILABLE: { label: "Còn hàng", tone: "success" },
-  INSUFFICIENT_STOCK: { label: "Không đủ hàng", tone: "warning" },
-  OUT_OF_STOCK: { label: "Hết hàng", tone: "danger" },
-  UNAVAILABLE: { label: "Ngừng bán", tone: "danger" },
-  UNKNOWN: { label: "Chưa rõ tồn kho", tone: "neutral" },
+export const CART_ITEM_STATUS_TONE: Record<CartItemStatus, Tone> = {
+  AVAILABLE: "success",
+  INSUFFICIENT_STOCK: "warning",
+  OUT_OF_STOCK: "danger",
+  UNAVAILABLE: "danger",
+  UNKNOWN: "neutral",
 };
 
-export const NOTIFICATION_TYPE: Record<NotificationType, string> = {
-  WELCOME: "Chào mừng",
-  ORDER_PLACED: "Nhận đơn",
-  ORDER_CONFIRMED: "Xác nhận đơn",
-  ORDER_CANCELLED: "Huỷ đơn",
+export const NOTIFICATION_TYPES: NotificationType[] = [
+  "WELCOME",
+  "ORDER_PLACED",
+  "ORDER_CONFIRMED",
+  "ORDER_CANCELLED",
+  "PASSWORD_RESET",
+];
+
+export const NOTIFICATION_STATUS_TONE: Record<NotificationStatus, Tone> = {
+  PENDING: "neutral",
+  SENT: "success",
+  FAILED: "danger",
 };
 
-export const NOTIFICATION_STATUS: Record<NotificationStatus, Label> = {
-  PENDING: { label: "Đang chờ", tone: "neutral" },
-  SENT: { label: "Đã gửi", tone: "success" },
-  FAILED: { label: "Lỗi gửi", tone: "danger" },
-};
-
-export const MOVEMENT_TYPE: Record<MovementType, string> = {
-  ADJUSTMENT: "Điều chỉnh",
-  RESERVATION: "Giữ hàng",
-  RELEASE: "Trả hàng giữ",
-  SALE: "Xuất bán",
-};
+export const MOVEMENT_TYPES: MovementType[] = ["ADJUSTMENT", "RESERVATION", "RELEASE", "SALE", "RETURN"];

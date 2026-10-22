@@ -1,7 +1,9 @@
 package com.shop.order.entity;
 
+import com.shop.common.autoconfigure.CommonMessagesAutoConfiguration;
 import com.shop.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.MessageSource;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -13,12 +15,14 @@ class OrderTest {
 
     private static final Instant NOW = Instant.parse("2026-10-21T10:00:00Z");
 
+    private final MessageSource messageSource = new CommonMessagesAutoConfiguration().messageSource();
+
     @Test
     void followsTheHappyPathAndRecordsTheTimeline() {
         Order order = placedOrder();
 
-        order.changeStatus(OrderStatus.AWAITING_PAYMENT, "Stock reserved", null, NOW);
-        order.changeStatus(OrderStatus.PAID, "Payment captured", null, NOW.plusSeconds(1));
+        order.changeStatus(OrderStatus.AWAITING_PAYMENT, "Товар зарезервирован", null, NOW);
+        order.changeStatus(OrderStatus.PAID, "Оплата получена", null, NOW.plusSeconds(1));
         order.changeStatus(OrderStatus.SHIPPED, null, UUID.randomUUID(), NOW.plusSeconds(2));
         order.changeStatus(OrderStatus.DELIVERED, null, UUID.randomUUID(), NOW.plusSeconds(3));
 
@@ -32,10 +36,11 @@ class OrderTest {
     }
 
     @Test
-    void canBeCancelledOnlyBeforePayment() {
+    void canBeCancelledOnlyBeforeShipping() {
         assertThat(OrderStatus.PENDING.isCancellable()).isTrue();
         assertThat(OrderStatus.AWAITING_PAYMENT.isCancellable()).isTrue();
-        assertThat(OrderStatus.PAID.isCancellable()).isFalse();
+        assertThat(OrderStatus.PAID.isCancellable()).isTrue();
+        assertThat(OrderStatus.SHIPPED.isCancellable()).isFalse();
         assertThat(OrderStatus.CANCELLED.isCancellable()).isFalse();
 
         Order order = placedOrder();
@@ -50,8 +55,11 @@ class OrderTest {
 
         assertThatThrownBy(() -> order.changeStatus(OrderStatus.PAID, null, null, NOW))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("cannot change from PENDING to PAID");
-        order.changeStatus(OrderStatus.CANCELLED, "Out of stock", null, NOW);
+                .hasMessage("order.error.invalid-transition")
+                .satisfies(ex -> assertThat(messageSource.getMessage(ex.getMessage(),
+                        ((BusinessException) ex).getMessageArgs(), CommonMessagesAutoConfiguration.DEFAULT_LOCALE))
+                        .isEqualTo("Заказ ORD-1 нельзя перевести из статуса «Ожидает подтверждения» в статус «Оплачен»"));
+        order.changeStatus(OrderStatus.CANCELLED, "Недостаточно товара на складе", null, NOW);
         assertThatThrownBy(() -> order.changeStatus(OrderStatus.AWAITING_PAYMENT, null, null, NOW))
                 .isInstanceOf(BusinessException.class);
         assertThat(order.getStatusHistory()).hasSize(2);

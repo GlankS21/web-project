@@ -24,6 +24,8 @@ import java.util.concurrent.TimeoutException;
 @RequiredArgsConstructor
 public class GatewayErrorWebExceptionHandler implements ErrorWebExceptionHandler {
 
+    static final String ENDPOINT_NOT_FOUND_KEY = "error.request.endpoint-not-found";
+
     private final ErrorResponseWriter errorResponseWriter;
 
     @Override
@@ -38,8 +40,10 @@ public class GatewayErrorWebExceptionHandler implements ErrorWebExceptionHandler
         } else {
             log.warn("Gateway error on {}: {} ({})", path, code, ex.getMessage());
         }
-        String message = code == ErrorCode.RESOURCE_NOT_FOUND ? "Endpoint not found" : code.getDefaultMessage();
-        return errorResponseWriter.write(exchange, code, message);
+        if (code == ErrorCode.RESOURCE_NOT_FOUND) {
+            return errorResponseWriter.write(exchange, code, ENDPOINT_NOT_FOUND_KEY);
+        }
+        return errorResponseWriter.write(exchange, code);
     }
 
     private ErrorCode resolve(Throwable ex) {

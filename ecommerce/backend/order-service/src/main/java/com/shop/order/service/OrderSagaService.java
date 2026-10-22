@@ -1,6 +1,7 @@
 package com.shop.order.service;
 
 import com.shop.common.event.PaymentFailedEvent;
+import com.shop.common.event.PaymentRefundedEvent;
 import com.shop.common.event.PaymentSucceededEvent;
 import com.shop.common.event.StockReservationFailedEvent;
 import com.shop.common.event.StockReservedEvent;
@@ -25,6 +26,9 @@ public interface OrderSagaService {
 
     /** AWAITING_PAYMENT → CANCELLED, publishes {@code order.cancelled} (stock is released). */
     void onPaymentFailed(PaymentFailedEvent event);
+
+    /** Records on a CANCELLED order that its payment was returned to the customer. */
+    void onPaymentRefunded(PaymentRefundedEvent event);
 
     /**
      * Ids of orders still waiting for stock or payment after the configured timeout, oldest first.

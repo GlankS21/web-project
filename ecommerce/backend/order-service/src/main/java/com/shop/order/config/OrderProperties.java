@@ -7,6 +7,7 @@ import org.springframework.validation.annotation.Validated;
 
 import java.math.BigDecimal;
 import java.time.Duration;
+import java.time.ZoneId;
 
 /**
  * @param maxItems           distinct products per order
@@ -14,6 +15,8 @@ import java.time.Duration;
  * @param shipping           shipping fee rules
  * @param paymentTimeout     orders still waiting for stock or payment after this delay are cancelled
  * @param outbox             relay of saga events to RabbitMQ
+ * @param currency           catalogue currency, used by the statistics
+ * @param timeZone           zone of the calendar days of the statistics
  */
 @Validated
 @ConfigurationProperties(prefix = "app.order")
@@ -22,15 +25,19 @@ public record OrderProperties(
         @Min(1) Integer maxQuantityPerItem,
         @Valid Shipping shipping,
         Duration paymentTimeout,
-        @Valid Outbox outbox
+        @Valid Outbox outbox,
+        String currency,
+        ZoneId timeZone
 ) {
 
     public OrderProperties {
         maxItems = maxItems == null ? 50 : maxItems;
         maxQuantityPerItem = maxQuantityPerItem == null ? 99 : maxQuantityPerItem;
         shipping = shipping == null ? new Shipping(null, null) : shipping;
-        paymentTimeout = paymentTimeout == null ? Duration.ofMinutes(15) : paymentTimeout;
+        paymentTimeout = paymentTimeout == null ? Duration.ofMinutes(30) : paymentTimeout;
         outbox = outbox == null ? new Outbox(null, null, null) : outbox;
+        currency = currency == null || currency.isBlank() ? "RUB" : currency;
+        timeZone = timeZone == null ? ZoneId.of("Europe/Moscow") : timeZone;
     }
 
     /**

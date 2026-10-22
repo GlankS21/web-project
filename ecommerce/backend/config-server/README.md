@@ -1,49 +1,49 @@
 # config-server
 
-Spring Cloud Config Server — cấu hình tập trung cho các service. Port mặc định: **8888**.
+Spring Cloud Config Server — централизованная конфигурация сервисов. Порт по умолчанию: **8888**.
 
-## Backend cấu hình
+## Backend конфигурации
 
-Dùng backend `native` (file system). Thư mục cấu hình: `src/main/resources/config-repo/`
+Используется backend `native` (файловая система). Каталог конфигурации: `src/main/resources/config-repo/`
 
-| File | Áp dụng cho |
+| Файл | Применяется к |
 |---|---|
-| `application.yml` | mọi service, mọi profile |
-| `application-dev.yml` / `application-docker.yml` | mọi service, theo profile |
-| `<tên-service>.yml`, `<tên-service>-<profile>.yml` | một service cụ thể (thêm ở các giai đoạn sau) |
+| `application.yml` | всем сервисам, всем профилям |
+| `application-dev.yml` / `application-docker.yml` | всем сервисам, по профилю |
+| `<имя-сервиса>.yml`, `<имя-сервиса>-<profile>.yml` | конкретному сервису (добавляются на последующих этапах) |
 
-- Profile `dev`: đọc từ classpath (`classpath:/config-repo`).
-- Profile `docker`: thư mục được mount vào container tại `/config-repo`, sửa file rồi restart
-  service client là có hiệu lực, không cần build lại image.
-- Có thể ghi đè bằng biến `CONFIG_SEARCH_LOCATIONS`.
+- Профиль `dev`: чтение из classpath (`classpath:/config-repo`).
+- Профиль `docker`: каталог монтируется в контейнер в `/config-repo`; после изменения файла достаточно перезапустить
+  сервис-клиент, пересобирать образ не нужно.
+- Можно переопределить переменной `CONFIG_SEARCH_LOCATIONS`.
 
-**Không lưu secret trong config-repo.** Giá trị như `${RABBITMQ_PASSWORD}` được trả về nguyên dạng
-placeholder và được client tự resolve từ biến môi trường của nó (đã có test kiểm chứng).
+**Не храните секреты в config-repo.** Значения вида `${RABBITMQ_PASSWORD}` возвращаются как есть, в виде
+placeholder, и клиент сам подставляет их из своих переменных окружения (это проверено тестом).
 
-## Bảo mật
+## Безопасность
 
-Mọi endpoint (trừ `/actuator/health`, `/actuator/info`) yêu cầu HTTP Basic với
+Все эндпоинты (кроме `/actuator/health`, `/actuator/info`) требуют HTTP Basic с
 `CONFIG_SERVER_USERNAME` / `CONFIG_SERVER_PASSWORD`.
 
-## Biến môi trường
+## Переменные окружения
 
-| Biến | Bắt buộc | Mặc định |
+| Переменная | Обязательна | По умолчанию |
 |---|---|---|
 | `CONFIG_SERVER_USERNAME` | ✔ | |
 | `CONFIG_SERVER_PASSWORD` | ✔ | |
 | `CONFIG_SERVER_PORT` | | `8888` |
 | `CONFIG_SEARCH_LOCATIONS` | | `classpath:/config-repo` (dev), `file:/config-repo` (docker) |
 
-## Chạy & kiểm tra
+## Запуск и проверка
 
 ```bash
 cd backend
-./mvnw install -DskipTests                            # lần đầu: cài common-lib vào ~/.m2
-./mvnw -pl config-server spring-boot:run              # profile dev, đọc ecommerce/.env
+./mvnw install -DskipTests                            # первый раз: установка common-lib в ~/.m2
+./mvnw -pl config-server spring-boot:run              # профиль dev, читает ecommerce/.env
 
 curl http://localhost:8888/actuator/health
 curl -u config:<password> http://localhost:8888/application/default
-curl -u config:<password> http://localhost:8888/auth-service/docker   # khi đã có file của service
+curl -u config:<password> http://localhost:8888/auth-service/docker   # когда файл сервиса уже есть
 ```
 
 Docker: `docker compose up -d --build config-server`

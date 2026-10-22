@@ -13,6 +13,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplicat
 import org.springframework.boot.autoconfigure.jackson.JacksonAutoConfiguration;
 import org.springframework.boot.autoconfigure.security.oauth2.resource.servlet.OAuth2ResourceServerAutoConfiguration;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.MessageSource;
 import org.springframework.context.annotation.Bean;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
@@ -44,13 +45,14 @@ public class JwtServletSecurityAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public RestAuthenticationEntryPoint restAuthenticationEntryPoint(ObjectMapper objectMapper) {
-        return new RestAuthenticationEntryPoint(objectMapper);
+    public RestAuthenticationEntryPoint restAuthenticationEntryPoint(ObjectMapper objectMapper,
+                                                                     MessageSource messageSource) {
+        return new RestAuthenticationEntryPoint(objectMapper, messageSource);
     }
 
     @Bean
     @ConditionalOnMissingBean
-    public RestAccessDeniedHandler restAccessDeniedHandler(ObjectMapper objectMapper) {
-        return new RestAccessDeniedHandler(objectMapper);
+    public RestAccessDeniedHandler restAccessDeniedHandler(ObjectMapper objectMapper, MessageSource messageSource) {
+        return new RestAccessDeniedHandler(objectMapper, messageSource);
     }
 }

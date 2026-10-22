@@ -41,12 +41,16 @@ app:
   order:
     max-items: 50
     max-quantity-per-item: 99
+    # Catalogue currency (same as product-service) and zone of the calendar days of the statistics
+    currency: ${CATALOG_CURRENCY:RUB}
+    time-zone: Europe/Moscow
     shipping:
       # Flat shipping fee, waived from the free-shipping threshold (amounts in the catalogue currency)
-      flat-fee: 30000
-      free-threshold: 500000
-    # Orders still waiting for stock or payment after this delay are cancelled
-    payment-timeout: 15m
+      flat-fee: 390
+      free-threshold: 5000
+    # Orders still waiting for stock or payment after this delay are cancelled (online payments
+    # can be retried until then)
+    payment-timeout: 30m
     expiry-check-interval: 1m
     outbox:
       poll-interval: 1s

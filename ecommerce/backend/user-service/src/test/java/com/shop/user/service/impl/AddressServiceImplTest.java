@@ -11,6 +11,7 @@ import com.shop.user.repository.AddressRepository;
 import com.shop.user.repository.UserProfileRepository;
 import com.shop.user.service.AddressService;
 import com.shop.user.service.UserProfileService;
+import com.shop.user.util.RussianPlural;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -57,7 +58,7 @@ class AddressServiceImplTest {
         AddressResponse response = service.createAddress(userId, "jane@example.com", request(false));
 
         assertThat(response.defaultAddress()).isTrue();
-        assertThat(response.city()).isEqualTo("Ho Chi Minh City");
+        assertThat(response.city()).isEqualTo("Москва");
         verify(userProfileService).getOrCreateProfile(userId, "jane@example.com");
         verify(addressRepository, never()).clearDefaultForUser(any());
     }
@@ -91,8 +92,24 @@ class AddressServiceImplTest {
         when(addressRepository.countByUserId(userId)).thenReturn((long) AddressService.MAX_ADDRESSES_PER_USER);
 
         assertThatThrownBy(() -> service.createAddress(userId, "jane@example.com", request(false)))
-                .isInstanceOf(BusinessException.class);
+                .isInstanceOf(BusinessException.class)
+                .hasMessage(AddressServiceImpl.ADDRESS_LIMIT_REACHED)
+                .extracting(ex -> ((BusinessException) ex).getMessageArgs())
+                .isEqualTo(new Object[]{AddressService.MAX_ADDRESSES_PER_USER, RussianPlural.MANY});
         verify(addressRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void createAddress_withoutCountryIsInRussia() {
+        when(addressRepository.countByUserId(userId)).thenReturn(0L);
+        when(userProfileRepository.getReferenceById(userId)).thenReturn(UserProfile.builder().id(userId).build());
+        when(addressRepository.saveAndFlush(any(Address.class))).thenAnswer(inv -> inv.getArgument(0));
+        AddressRequest request = new AddressRequest("Иван Петров", "+79161234567", "ул. Тверская, д. 7", null,
+                null, null, "Москва", "125009", null, null);
+
+        AddressResponse response = service.createAddress(userId, "ivan@example.ru", request);
+
+        assertThat(response.countryCode()).isEqualTo("RU");
     }
 
     @Test
@@ -155,18 +172,18 @@ class AddressServiceImplTest {
     }
 
     private AddressRequest request(boolean makeDefault) {
-        return new AddressRequest("Jane Doe", "+84901234567", "12 Nguyen Hue", null, "Ben Nghe",
-                "District 1", "Ho Chi Minh City", "700000", "VN", makeDefault);
+        return new AddressRequest("Анна Иванова", "+79161234567", "ул. Тверская, д. 7", null, "Тверской",
+                "Центральный административный округ", "Москва", "125009", "RU", makeDefault);
     }
 
     private Address address(boolean isDefault) {
         Address address = new Address();
         address.setId(UUID.randomUUID());
-        address.setRecipientName("Jane Doe");
-        address.setPhoneNumber("+84901234567");
-        address.setAddressLine1("12 Nguyen Hue");
-        address.setCity("Ho Chi Minh City");
-        address.setCountryCode("VN");
+        address.setRecipientName("Анна Иванова");
+        address.setPhoneNumber("+79161234567");
+        address.setAddressLine1("ул. Тверская, д. 7");
+        address.setCity("Москва");
+        address.setCountryCode("RU");
         address.setDefaultAddress(isDefault);
         return address;
     }

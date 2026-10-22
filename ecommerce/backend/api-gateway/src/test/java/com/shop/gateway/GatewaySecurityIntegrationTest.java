@@ -61,6 +61,7 @@ class GatewaySecurityIntegrationTest {
                 .expectHeader().valueEquals(HeaderConstants.CORRELATION_ID, "it-correlation-1")
                 .expectBody()
                 .jsonPath("$.code").isEqualTo("UNAUTHORIZED")
+                .jsonPath("$.message").isEqualTo("Требуется вход в аккаунт")
                 .jsonPath("$.path").isEqualTo("/api/users/me")
                 .jsonPath("$.correlationId").isEqualTo("it-correlation-1");
     }
@@ -72,7 +73,7 @@ class GatewaySecurityIntegrationTest {
                 .exchange()
                 .expectStatus().isUnauthorized()
                 .expectBody()
-                .jsonPath("$.message").isEqualTo("Access token is invalid or expired");
+                .jsonPath("$.message").isEqualTo("Токен доступа недействителен или истёк, войдите снова");
     }
 
     @Test
@@ -91,7 +92,29 @@ class GatewaySecurityIntegrationTest {
                 .exchange()
                 .expectStatus().isNotFound()
                 .expectBody()
-                .jsonPath("$.code").isEqualTo("RESOURCE_NOT_FOUND");
+                .jsonPath("$.code").isEqualTo("RESOURCE_NOT_FOUND")
+                .jsonPath("$.message").isEqualTo("Адрес не найден");
+    }
+
+    @Test
+    void errorMessagesAreInRussianWhateverTheAcceptLanguage() {
+        webTestClient.get().uri("/api/users/me")
+                .header(HttpHeaders.ACCEPT_LANGUAGE, "en-US,en;q=0.9")
+                .exchange()
+                .expectStatus().isUnauthorized()
+                .expectBody()
+                .jsonPath("$.message").isEqualTo("Требуется вход в аккаунт");
+    }
+
+    @Test
+    void circuitBreakerFallbackNamesTheUnavailableServiceInRussian() {
+        webTestClient.get().uri("/fallback/product-service")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken("access"))
+                .exchange()
+                .expectStatus().isEqualTo(503)
+                .expectBody()
+                .jsonPath("$.code").isEqualTo("SERVICE_UNAVAILABLE")
+                .jsonPath("$.message").isEqualTo("Сервис product-service временно недоступен, попробуйте позже");
     }
 
     @Test
@@ -110,7 +133,8 @@ class GatewaySecurityIntegrationTest {
                 .exchange()
                 .expectStatus().isForbidden()
                 .expectBody()
-                .jsonPath("$.code").isEqualTo("FORBIDDEN");
+                .jsonPath("$.code").isEqualTo("FORBIDDEN")
+                .jsonPath("$.message").isEqualTo("Недостаточно прав для этого действия");
     }
 
     @Test
@@ -139,7 +163,8 @@ class GatewaySecurityIntegrationTest {
                 .expectStatus().isEqualTo(429)
                 .expectHeader().exists(HttpHeaders.RETRY_AFTER)
                 .expectBody()
-                .jsonPath("$.code").isEqualTo("TOO_MANY_REQUESTS");
+                .jsonPath("$.code").isEqualTo("TOO_MANY_REQUESTS")
+                .jsonPath("$.message").isEqualTo("Слишком много запросов, попробуйте позже");
     }
 
     private String accessToken(String tokenType) {

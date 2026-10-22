@@ -1,117 +1,131 @@
 # frontend
 
-Website bán hàng **TechShop**: Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS 4.
-Port mặc định: **3000**.
+Интернет-магазин **TechShop**: Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS 4.
+Порт по умолчанию: **3000**.
 
-## Trang
+Весь интерфейс на русском языке: тексты берутся через next-intl из `messages/ru.json`; суммы отображаются в рублях
+(«1 234,50 ₽»), дата и время — в часовом поясе Europe/Moscow, телефоны вводятся в формате `+7XXXXXXXXXX`.
 
-| Khu vực | Đường dẫn | Ghi chú |
+## Страницы
+
+| Раздел | Путь | Примечание |
 |---|---|---|
-| Công khai | `/`, `/products`, `/products/[slug]` | Lọc theo danh mục, thương hiệu, khoảng giá; sắp xếp; phân trang; tồn kho thời gian thực |
-| | `/login`, `/register` | `?next=` chỉ nhận đường dẫn nội bộ (chống open redirect) |
-| Khách hàng | `/cart` | Giá và tồn kho được cart-service tính lại mỗi lần tải; chặn đặt hàng khi thiếu hàng |
-| | `/checkout` | Chọn địa chỉ đã lưu hoặc nhập mới, phương thức thanh toán; `Idempotency-Key` sinh một lần cho mỗi lần vào trang, nên bấm hai lần không tạo hai đơn |
-| | `/orders`, `/orders/[id]` | Trang chi tiết tự làm mới mỗi 2 giây khi Saga đang chạy (`PENDING`, `AWAITING_PAYMENT`); huỷ đơn chưa thanh toán |
-| | `/account`, `/account/addresses`, `/account/password`, `/account/notifications` | Đổi mật khẩu thu hồi mọi phiên, người dùng được đưa về trang đăng nhập |
-| Quản trị (`ROLE_ADMIN`) | `/admin` | Số đơn chờ giao, chờ thanh toán, sản phẩm sắp hết, e-mail lỗi; đơn gần đây |
-| | `/admin/orders` | Tìm theo mã đơn / e-mail, chuyển `PAID → SHIPPED → DELIVERED`, huỷ |
-| | `/admin/products`, `/admin/categories` | Thêm, sửa, đổi trạng thái sản phẩm; cây danh mục hai cấp |
-| | `/admin/inventory` | Nhập/xuất kho, kiểm kê, ngưỡng cảnh báo, lịch sử biến động |
-| | `/admin/accounts`, `/admin/notifications` | Cấp/thu hồi quyền, khoá tài khoản; gửi lại e-mail |
+| Публичный | `/`, `/products`, `/products/[slug]` | Фильтры по категории, бренду, диапазону цен; сортировка; пагинация; остатки в реальном времени; средняя оценка и список отзывов («Показать ещё») |
+| | `/login`, `/register` | `?next=` принимает только внутренние пути (защита от open redirect) |
+| | `/forgot-password`, `/reset-password?token=` | Восстановление пароля: auth-service отправляет ссылку по e-mail (в Mailpit при локальном запуске); ответ одинаков независимо от того, существует ли e-mail; страница сброса закрыта от индексации и не отправляет Referer |
+| Покупатель | `/cart` | Цены и остатки пересчитываются cart-service при каждой загрузке; оформление блокируется при нехватке товара |
+| | `/checkout` | Выбор сохранённого адреса или ввод нового, способ оплаты; промокод (`POST /api/orders/coupons/preview` пересчитывает итог по текущим ценам); `Idempotency-Key` генерируется один раз при каждом открытии страницы, поэтому двойное нажатие не создаёт два заказа |
+| | `/products/[slug]#reviews` | Написать / изменить / удалить отзыв (1–5 звёзд + комментарий): только тем, кто получил товар (заказ `DELIVERED`) |
+| | `/orders`, `/orders/[id]` | Страница заказа обновляется каждые 2 секунды, пока выполняется Saga (`PENDING`, `AWAITING_PAYMENT`); отмена неоплаченного заказа |
+| | `/account`, `/account/addresses`, `/account/password`, `/account/notifications` | Смена пароля отзывает все сеансы, пользователь перенаправляется на страницу входа; кнопка «Выйти на всех устройствах» (`POST /api/auth/logout-all`); содержимое письма для сброса пароля скрыто |
+| Администрирование (`ROLE_ADMIN`) | `/admin` | Число заказов, ожидающих доставки и оплаты, заканчивающиеся товары, письма с ошибками; статистика за 7/30/90 дней (выручка, число заказов, средний чек, график выручки по дням с подсказками и таблицей, заказы по статусам, лидеры продаж); последние заказы |
+| | `/admin/payments` | Все платежи: провайдер, число попыток, причина отказа, возвраты |
+| | `/admin/coupons` | Создание, изменение, отключение, удаление (если не использовался) промокодов: процент или фиксированная сумма, минимальная сумма заказа, максимальная скидка, срок действия, лимит использований |
+| | `/admin/reviews` | Фильтр по числу звёзд, удаление неприемлемых отзывов |
+| | `/admin/orders` | Поиск по номеру заказа / e-mail, перевод `PAID → SHIPPED → DELIVERED`, отмена |
+| | `/admin/products`, `/admin/categories` | Добавление, изменение, смена статуса товаров; загрузка изображений с компьютера (JPEG/PNG/WebP/GIF ≤ 5 МБ, `POST /api/products/images`) или ввод https-URL; двухуровневое дерево категорий |
+| | `/admin/inventory` | Приход/расход, инвентаризация, порог предупреждения, история движения |
+| | `/admin/accounts`, `/admin/accounts/[id]`, `/admin/notifications` | Выдача/отзыв ролей, блокировка учётных записей; страница подробностей: профиль, адресная книга, заказы пользователя; повторная отправка писем |
 
-## Kiến trúc: Backend-for-Frontend
+Общие состояния: `loading.tsx` (skeleton) для каталога, заказов, личного кабинета, администрирования; `not-found.tsx` (404),
+`error.tsx` (ошибка отдельной страницы) и `global-error.tsx` (страница 500, когда падает сам корневой layout; читает тексты
+напрямую из `messages/ru.json`, так как провайдера уже нет). Короткие уведомления после действий (сохранено, удалено…)
+показываются как toast (`components/toast.tsx`); ошибки, требующие действий пользователя, по-прежнему выводятся рядом с формой.
+
+## Архитектура: Backend-for-Frontend
 
 ```
-Trình duyệt ──(cookie HttpOnly, cùng origin)──► Next.js ──(Authorization: Bearer)──► API gateway ──► services
-             /, /products, ... (trang render ở server)
-             /api/*  (route handler chuyển tiếp)
+Браузер ──(cookie HttpOnly, тот же origin)──► Next.js ──(Authorization: Bearer)──► API gateway ──► services
+             /, /products, ... (страницы рендерятся на сервере)
+             /api/*  (route handler-прокси)
 ```
 
-- **Trình duyệt không bao giờ thấy token.** Access token và refresh token nằm trong cookie
-  `shop_at`, `shop_rt` (`HttpOnly`, `SameSite=Lax`, `Secure` khi chạy HTTPS). JavaScript phía
-  trình duyệt chỉ gọi `/api/*` cùng origin; route handler `src/app/api/[...path]/route.ts` gắn
-  token từ cookie rồi chuyển tiếp tới gateway.
-- **Đăng nhập / đăng ký / đăng xuất** có route handler riêng (`src/app/api/auth/*`) để đặt và
-  xoá cookie. `/api/auth/refresh` không được chuyển tiếp: chỉ server làm mới token.
-- **CSRF**: mọi request khác `GET` phải có `Origin` trùng host (hoặc `Sec-Fetch-Site: same-origin`),
-  nếu không trả 403. Cùng với `SameSite=Lax`, trang khác không thể gửi request thay người dùng.
-- **Phân quyền ở frontend chỉ phục vụ giao diện.** `src/proxy.ts` đọc JWT (không kiểm tra chữ ký)
-  để chuyển người chưa đăng nhập về `/login` và người không phải admin khỏi `/admin`. Quyền thật
-  do gateway và từng service kiểm tra.
-- **Header bảo mật** (`next.config.ts`): Content-Security-Policy (script, style, request chỉ từ
-  `'self'`; ảnh từ `https:`; `frame-ancestors 'none'`), `X-Frame-Options: DENY`, `nosniff`,
-  `Referrer-Policy`, `Permissions-Policy`. `script-src` vẫn có `'unsafe-inline'` vì payload React
-  Server Components được nhúng dạng script inline; muốn bỏ cần chuyển sang CSP dùng nonce.
+- **Браузер никогда не видит токены.** Access token и refresh token хранятся в cookie
+  `shop_at`, `shop_rt` (`HttpOnly`, `SameSite=Lax`, `Secure` при работе по HTTPS). JavaScript на стороне
+  браузера обращается только к `/api/*` того же origin; route handler `src/app/api/[...path]/route.ts` подставляет
+  токен из cookie и перенаправляет запрос в gateway. Тело — не более 1 МБ, для `products/images` (загрузка изображений
+  multipart) — 6 МБ; заголовки кеширования (`Cache-Control`, `ETag`…) передаются обратно, чтобы браузер кешировал изображения.
+- **Вход / регистрация / выход** имеют собственные route handler (`src/app/api/auth/*`) для установки и
+  удаления cookie. `/api/auth/refresh` не проксируется: токены обновляет только сервер.
+- **CSRF**: каждый запрос, кроме `GET`, должен иметь `Origin`, совпадающий с host (или `Sec-Fetch-Site: same-origin`),
+  иначе возвращается 403. Вместе с `SameSite=Lax` это не позволяет другим сайтам отправлять запросы от имени пользователя.
+- **Проверка прав во фронтенде нужна только для интерфейса.** `src/proxy.ts` читает JWT (без проверки подписи),
+  чтобы отправить неавторизованных пользователей на `/login`, а не-администраторов — прочь из `/admin`. Реальные права
+  проверяют gateway и каждый сервис.
+- **Заголовки безопасности** (`next.config.ts`): Content-Security-Policy (скрипты, стили, запросы только с
+  `'self'`; изображения с `https:`; `frame-ancestors 'none'`), `X-Frame-Options: DENY`, `nosniff`,
+  `Referrer-Policy`, `Permissions-Policy`. В `script-src` остаётся `'unsafe-inline'`, потому что payload React
+  Server Components встраивается как inline-скрипт; чтобы убрать его, нужно перейти на CSP с nonce.
 
-### Làm mới token
+### Обновление токена
 
-Access token sống 15 phút. Khi token sắp hết hạn (còn dưới 30 giây) mà vẫn còn refresh token,
-`src/proxy.ts` gọi `/api/auth/refresh` trước khi render trang hoặc chuyển tiếp API, rồi ghi cookie mới.
+Access token живёт 15 минут. Когда токен вот-вот истечёт (осталось меньше 30 секунд), а refresh token ещё есть,
+`src/proxy.ts` вызывает `/api/auth/refresh` до рендера страницы или проксирования API и записывает новые cookie.
 
-auth-service xoay vòng refresh token và coi việc dùng lại token cũ là dấu hiệu bị đánh cắp (thu hồi
-mọi phiên). Một lần tải trang phát sinh nhiều request đồng thời cùng mang token cũ, nên
-`src/lib/server/token-refresh.ts` gom chúng lại (single-flight): chỉ một lời gọi refresh, các
-request khác (kể cả request đến trong 30 giây sau) dùng chung kết quả.
+auth-service ротирует refresh token и считает повторное использование старого токена признаком кражи (отзывает
+все сеансы). Одна загрузка страницы порождает несколько одновременных запросов с одним и тем же старым токеном, поэтому
+`src/lib/server/token-refresh.ts` объединяет их (single-flight): выполняется только один вызов refresh, остальные
+запросы (включая пришедшие в течение 30 секунд после него) используют общий результат.
 
-> **Giới hạn**: bộ nhớ đệm này nằm trong tiến trình. Chạy **một** instance frontend, hoặc dùng
-> sticky session theo người dùng khi mở rộng; nếu không, hai instance có thể cùng làm mới một token
-> và auth-service sẽ thu hồi phiên.
+> **Ограничение**: этот кеш находится внутри процесса. Запускайте **один** экземпляр фронтенда или используйте
+> sticky session по пользователю при масштабировании; иначе два экземпляра могут одновременно обновить один токен,
+> и auth-service отзовёт сеанс.
 
-### Rate limit theo trình duyệt
+### Rate limit по браузеру
 
-Mọi request tới gateway đều đi ra từ container frontend, nên nếu không làm gì thêm, gateway sẽ áp
-một hạn mức chung cho tất cả người dùng. Để tránh điều đó, frontend gửi kèm
-`X-Client-Ip` (địa chỉ trình duyệt) và `X-Proxy-Secret`. Gateway chỉ tin `X-Client-Ip` khi secret
-trùng `TRUSTED_PROXY_SECRET` của nó.
+Все запросы к gateway исходят из контейнера фронтенда, поэтому без дополнительных мер gateway применял бы
+один общий лимит ко всем пользователям. Чтобы этого избежать, фронтенд передаёт
+`X-Client-Ip` (адрес браузера) и `X-Proxy-Secret`. Gateway доверяет `X-Client-Ip` только тогда, когда секрет
+совпадает с его `TRUSTED_PROXY_SECRET`.
 
-Địa chỉ trình duyệt lấy từ `X-Forwarded-For`. Next.js chỉ tự đặt header này khi request chưa có,
-nên giá trị trình duyệt tự gửi được giữ nguyên. Vì vậy:
+Адрес браузера берётся из `X-Forwarded-For`. Next.js сам устанавливает этот заголовок, только если его ещё нет в запросе,
+поэтому значение, отправленное браузером, сохраняется. Следовательно:
 
-- `TRUSTED_PROXY_HOPS=0` (mặc định): lấy phần tử cuối. Khi trình duyệt kết nối thẳng tới frontend,
-  họ có thể **tự chọn** địa chỉ này để lách giới hạn. Chấp nhận được khi phát triển.
-- Production: đặt frontend sau reverse proxy (nginx, load balancer) có ghi thêm vào
-  `X-Forwarded-For`, rồi đặt `TRUSTED_PROXY_HOPS` bằng số proxy đó. Frontend lấy phần tử thứ
-  `TRUSTED_PROXY_HOPS` tính từ cuối, tức địa chỉ do proxy ngoài cùng ghi vào, không giả mạo được.
+- `TRUSTED_PROXY_HOPS=0` (по умолчанию): берётся последний элемент. Если браузер подключается к фронтенду напрямую,
+  пользователь может **сам выбрать** этот адрес и обойти лимит. Допустимо при разработке.
+- Production: разместите фронтенд за reverse proxy (nginx, балансировщик нагрузки), который дописывает адрес в
+  `X-Forwarded-For`, и задайте `TRUSTED_PROXY_HOPS` равным числу таких прокси. Фронтенд берёт элемент номер
+  `TRUSTED_PROXY_HOPS` с конца, то есть адрес, записанный самым внешним прокси, — его нельзя подделать.
 
-## Biến môi trường
+## Переменные окружения
 
-| Biến | Mặc định | Ý nghĩa |
+| Переменная | По умолчанию | Назначение |
 |---|---|---|
-| `API_GATEWAY_URL` | `http://localhost:8080` | Địa chỉ gateway, chỉ server dùng |
-| `TRUSTED_PROXY_SECRET` | (trống: tắt) | Trùng với gateway |
-| `TRUSTED_PROXY_HOPS` | `0` | Số reverse proxy phía trước frontend |
+| `API_GATEWAY_URL` | `http://localhost:8080` | Адрес gateway, используется только сервером |
+| `TRUSTED_PROXY_SECRET` | (пусто: выключено) | Совпадает со значением в gateway |
+| `TRUSTED_PROXY_HOPS` | `0` | Число reverse proxy перед фронтендом |
 
-Không có biến `NEXT_PUBLIC_*`: trình duyệt không cần biết địa chỉ backend.
+Переменных `NEXT_PUBLIC_*` нет: браузеру не нужно знать адрес бэкенда.
 
-## Chạy & kiểm thử
+## Запуск и тестирование
 
 ```bash
 cd frontend
 npm ci
-cp .env.example .env.local     # điền TRUSTED_PROXY_SECRET giống .env ở thư mục gốc (hoặc để trống)
-npm run dev                    # http://localhost:3000, cần gateway ở :8080
+cp .env.example .env.local     # укажите TRUSTED_PROXY_SECRET как в .env в корне (или оставьте пустым)
+npm run dev                    # http://localhost:3000, нужен gateway на :8080
 
 npm run typecheck              # tsc --noEmit
 npm run lint                   # ESLint (next/core-web-vitals + typescript)
-npm test                       # Vitest: phân tích JWT, địa chỉ client, refresh single-flight, redirect an toàn, định dạng
-npm run build && npm start     # bản production (output: standalone)
+npm test                       # Vitest: разбор JWT, адрес клиента, single-flight refresh, безопасный redirect, форматирование
+npm run build && npm start     # production-сборка (output: standalone)
 ```
 
-Trong Docker Compose, service `frontend` được build từ `Dockerfile` (multi-stage,
-`node:22-alpine`, chạy bằng user không phải root) và có healthcheck `GET /api/health`.
+В Docker Compose сервис `frontend` собирается из `Dockerfile` (multi-stage,
+`node:22-alpine`, запускается от непривилегированного пользователя) и имеет healthcheck `GET /api/health`.
 
-## Cấu trúc
+## Структура
 
 ```
 src/
-├── proxy.ts                 # làm mới token, chuyển hướng trang cần đăng nhập / quyền admin
-├── app/                     # trang (App Router) và route handler /api/*
-├── components/              # UI dùng chung, giỏ hàng, đặt hàng, đơn hàng, tài khoản, quản trị
+├── proxy.ts                 # обновление токена, перенаправление со страниц, требующих входа / прав администратора
+├── app/                     # страницы (App Router) и route handler /api/*
+├── components/              # общий UI, корзина, оформление заказа, заказы, личный кабинет, администрирование
 └── lib/
-    ├── types.ts             # kiểu DTO của backend
-    ├── format.ts            # tiền tệ, ngày giờ (Asia/Ho_Chi_Minh), nhãn trạng thái tiếng Việt
-    ├── session.ts           # đọc JWT cho giao diện
-    ├── errors.ts            # ApiError, thông báo lỗi tiếng Việt
-    ├── client/api.ts        # fetch phía trình duyệt tới /api/*
-    └── server/              # chỉ chạy trên server: gọi gateway, cookie, refresh, IP client
+    ├── types.ts             # типы DTO бэкенда
+    ├── format.ts            # денежные суммы (RUB), дата и время (Europe/Moscow), русские названия статусов
+    ├── session.ts           # чтение JWT для интерфейса
+    ├── errors.ts            # ApiError, сообщения об ошибках на русском
+    ├── client/api.ts        # fetch из браузера к /api/*
+    └── server/              # выполняется только на сервере: вызовы gateway, cookie, refresh, IP клиента
 ```

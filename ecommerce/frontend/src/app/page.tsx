@@ -1,32 +1,34 @@
 import Link from "next/link";
+import { getTranslations } from "next-intl/server";
 import { ProductCard } from "@/components/ProductCard";
 import { Alert, ButtonLink } from "@/components/ui";
 import { apiGet } from "@/lib/server/data";
 import type { Category, PageResponse, ProductSummary } from "@/lib/types";
 
 export default async function HomePage() {
-  const [categories, latest] = await Promise.all([
+  const [categories, latest, t] = await Promise.all([
     apiGet<Category[]>("/api/categories").catch(() => null),
     apiGet<PageResponse<ProductSummary>>("/api/products?size=8&sort=createdAt,desc").catch(() => null),
+    getTranslations("home"),
   ]);
 
   return (
     <>
       <section className="bg-gradient-to-br from-brand-700 via-brand-600 to-sky-500 text-white">
         <div className="container-page flex flex-col gap-6 py-14 sm:py-20">
-          <p className="text-sm font-medium tracking-widest text-sky-100 uppercase">Công nghệ chính hãng</p>
+          <p className="text-sm font-medium tracking-widest text-sky-100 uppercase">{t("eyebrow")}</p>
           <h1 className="max-w-2xl text-3xl leading-tight font-bold sm:text-5xl">
-            Laptop, điện thoại và phụ kiện cho công việc lẫn giải trí
+            {t("heroTitle")}
           </h1>
           <p className="max-w-xl text-sky-50">
-            Giá cập nhật theo thời gian thực, giữ hàng ngay khi đặt, thanh toán khi nhận hàng hoặc qua thẻ và ví điện tử.
+            {t("heroText")}
           </p>
           <div className="flex flex-wrap gap-3">
             <ButtonLink href="/products" size="lg" variant="secondary" className="border-transparent">
-              Mua sắm ngay
+              {t("shopNow")}
             </ButtonLink>
             <ButtonLink href="/products?sort=price,asc" size="lg" variant="ghost" className="text-white hover:bg-white/10">
-              Giá tốt nhất
+              {t("bestPrices")}
             </ButtonLink>
           </div>
         </div>
@@ -36,7 +38,7 @@ export default async function HomePage() {
         {categories && categories.length > 0 && (
           <section aria-labelledby="categories-title">
             <h2 id="categories-title" className="mb-4 text-xl font-semibold text-slate-900">
-              Danh mục
+              {t("categories")}
             </h2>
             <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
               {categories.map((category) => (
@@ -64,10 +66,10 @@ export default async function HomePage() {
         <section aria-labelledby="latest-title">
           <div className="mb-4 flex items-center justify-between">
             <h2 id="latest-title" className="text-xl font-semibold text-slate-900">
-              Sản phẩm mới
+              {t("latest")}
             </h2>
             <Link href="/products?sort=createdAt,desc" className="link text-sm">
-              Xem tất cả →
+              {t("viewAll")}
             </Link>
           </div>
           {latest ? (
@@ -77,7 +79,7 @@ export default async function HomePage() {
               ))}
             </div>
           ) : (
-            <Alert tone="warning">Không tải được danh sách sản phẩm. Vui lòng thử lại sau.</Alert>
+            <Alert tone="warning">{t("productsUnavailable")}</Alert>
           )}
         </section>
       </div>

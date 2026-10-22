@@ -6,6 +6,8 @@ import org.springframework.stereotype.Component;
 
 /**
  * Used when {@code app.notification.mail.enabled=false}: e-mails are written to the log only.
+ * The whole body is logged on purpose, so that a developer can follow links such as the password
+ * reset link; this sender must therefore not be used in production.
  */
 @Slf4j
 @Component

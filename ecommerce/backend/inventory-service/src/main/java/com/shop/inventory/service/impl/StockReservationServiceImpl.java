@@ -1,5 +1,6 @@
 package com.shop.inventory.service.impl;
 
+import com.shop.common.autoconfigure.CommonMessagesAutoConfiguration;
 import com.shop.common.constant.MessagingConstants;
 import com.shop.common.event.OrderCancelledEvent;
 import com.shop.common.event.OrderConfirmedEvent;
@@ -24,7 +25,9 @@ import com.shop.inventory.repository.StockReservationRepository;
 import com.shop.inventory.service.StockReservationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.MessageSource;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
@@ -51,6 +54,7 @@ public class StockReservationServiceImpl implements StockReservationService {
     private final OutboxService outboxService;
     private final InventoryMapper inventoryMapper;
     private final Clock clock;
+    private final MessageSource messageSource;
 
     @Override
     @Transactional
@@ -118,7 +122,8 @@ public class StockReservationServiceImpl implements StockReservationService {
                 log.info("Committed stock reservation of order {}", event.orderNumber());
             }
             case COMMITTED -> log.info("Reservation of order {} already committed, event ignored", event.orderNumber());
-            case FAILED, RELEASED -> log.error("Order {} was confirmed but its reservation is {}; stock not committed",
+            case FAILED, RELEASED, RETURNED -> log.error(
+                    "Order {} was confirmed but its reservation is {}; stock not committed",
                     event.orderNumber(), reservation.getStatus());
         }
     }
@@ -132,7 +137,9 @@ public class StockReservationServiceImpl implements StockReservationService {
             marker.setOrderId(event.orderId());
             marker.setOrderNumber(event.orderNumber());
             marker.setStatus(ReservationStatus.RELEASED);
-            marker.setFailureReason(truncate("Cancelled before stock was reserved: " + event.reason()));
+            marker.setFailureReason(truncate(StringUtils.hasText(event.reason())
+                    ? message("inventory.reservation.cancelled-before-reserve-with-reason", event.reason())
+                    : message("inventory.reservation.cancelled-before-reserve")));
             reservationRepository.save(marker);
             log.info("Order {} cancelled before any reservation; marker recorded", event.orderNumber());
             return;
@@ -147,10 +154,18 @@ public class StockReservationServiceImpl implements StockReservationService {
                         event.orderId());
                 log.info("Released stock reservation of order {}", event.orderNumber());
             }
-            case RELEASED, FAILED -> log.info("Reservation of order {} is {}, nothing to release",
+            case COMMITTED -> {
+                // Paid order cancelled before shipping: the goods never left, they are sellable again
+                applyToItems(reservation, MovementType.RETURN, InventoryItem::restock);
+                reservation.setStatus(ReservationStatus.RETURNED);
+                reservation.setFailureReason(truncate(event.reason()));
+                outboxService.enqueue(MessagingConstants.INVENTORY_EXCHANGE, MessagingConstants.STOCK_RELEASED_KEY,
+                        new StockReleasedEvent(UUID.randomUUID(), clock.instant(), event.orderId(), event.orderNumber()),
+                        event.orderId());
+                log.info("Returned the sold stock of cancelled order {}", event.orderNumber());
+            }
+            case RELEASED, RETURNED, FAILED -> log.info("Reservation of order {} is {}, nothing to release",
                     event.orderNumber(), reservation.getStatus());
-            case COMMITTED -> log.warn("Order {} cancelled after its stock was committed; restock it with a manual "
-                    + "adjustment if the goods come back", event.orderNumber());
         }
     }
 
@@ -159,19 +174,20 @@ public class StockReservationServiceImpl implements StockReservationService {
     public ReservationResponse getReservation(UUID orderId) {
         return reservationRepository.findByOrderId(orderId)
                 .map(inventoryMapper::toResponse)
-                .orElseThrow(() -> new ResourceNotFoundException("Stock reservation", "orderId", orderId));
+                .orElseThrow(() -> ResourceNotFoundException.of("inventory.error.reservation-not-found", orderId));
     }
 
     /**
      * Sums duplicate lines of the same product. Returns a failure reason for a malformed order.
+     * Failure reasons are in Russian: order-service shows them to the customer as the cancellation reason.
      */
     private String collectRequestedQuantities(List<OrderItemPayload> lines, SortedMap<Long, Integer> requested) {
         if (lines == null || lines.isEmpty()) {
-            return "Order has no items";
+            return message("inventory.reservation.error.no-items");
         }
         for (OrderItemPayload line : lines) {
             if (line == null || line.productId() == null || line.quantity() <= 0) {
-                return "Order contains an invalid item";
+                return message("inventory.reservation.error.invalid-item");
             }
             requested.merge(line.productId(), line.quantity(), Integer::sum);
         }
@@ -186,10 +202,11 @@ public class StockReservationServiceImpl implements StockReservationService {
             InventoryItem item = byProductId.get(productId);
             int available = item == null ? 0 : item.availableQuantity();
             if (available < quantity) {
-                shortages.add("product %d (requested %d, available %d)".formatted(productId, quantity, available));
+                shortages.add(message("inventory.reservation.shortage", productId, quantity, available));
             }
         });
-        return shortages.isEmpty() ? null : "Insufficient stock for " + String.join(", ", shortages);
+        return shortages.isEmpty() ? null
+                : message("inventory.reservation.error.insufficient-stock", String.join(", ", shortages));
     }
 
     /**
@@ -206,10 +223,19 @@ public class StockReservationServiceImpl implements StockReservationService {
         for (InventoryItem item : items) {
             int quantity = quantities.get(item.getProductId());
             operation.accept(item, quantity);
-            int onHandChange = type == MovementType.SALE ? -quantity : 0;
-            stockMovementRepository.save(StockMovement.of(item, type, onHandChange, -quantity,
+            int onHandChange = switch (type) {
+                case SALE -> -quantity;
+                case RETURN -> quantity;
+                default -> 0;
+            };
+            int reservedChange = type == MovementType.RETURN ? 0 : -quantity;
+            stockMovementRepository.save(StockMovement.of(item, type, onHandChange, reservedChange,
                     reservation.getOrderNumber(), null, null));
         }
+    }
+
+    private String message(String key, Object... args) {
+        return messageSource.getMessage(key, args, CommonMessagesAutoConfiguration.DEFAULT_LOCALE);
     }
 
     private static String truncate(String reason) {

@@ -11,38 +11,40 @@ import jakarta.validation.constraints.Size;
  */
 public record ShippingAddressRequest(
 
-        @Schema(example = "John Doe")
+        @Schema(description = "Получатель", example = "Иван Петров")
         @NotBlank @Size(max = 150)
         String recipientName,
 
-        @Schema(example = "+84901234567")
+        @Schema(description = "Телефон получателя в формате +7XXXXXXXXXX", example = "+79161234567")
         @NotBlank
         @Pattern(regexp = ValidationPatterns.PHONE, message = ValidationPatterns.PHONE_MESSAGE)
         String phoneNumber,
 
-        @Schema(example = "12 Nguyen Hue")
+        @Schema(description = "Улица и дом", example = "ул. Тверская, д. 7")
         @NotBlank @Size(max = 255)
         String addressLine1,
 
+        @Schema(description = "Квартира, подъезд, этаж", example = "кв. 12")
         @Size(max = 255)
         String addressLine2,
 
-        @Schema(example = "Ben Nghe")
+        @Schema(description = "Район", example = "Тверской")
         @Size(max = 100)
         String ward,
 
-        @Schema(example = "District 1")
+        @Schema(description = "Административный округ", example = "ЦАО")
         @Size(max = 100)
         String district,
 
-        @Schema(example = "Ho Chi Minh City")
+        @Schema(description = "Город", example = "Москва")
         @NotBlank @Size(max = 100)
         String city,
 
+        @Schema(description = "Почтовый индекс", example = "125009")
         @Size(max = 20)
         String postalCode,
 
-        @Schema(example = "VN")
+        @Schema(description = "Код страны ISO 3166-1", example = "RU")
         @NotBlank
         @Pattern(regexp = ValidationPatterns.COUNTRY_CODE, message = ValidationPatterns.COUNTRY_CODE_MESSAGE)
         String countryCode

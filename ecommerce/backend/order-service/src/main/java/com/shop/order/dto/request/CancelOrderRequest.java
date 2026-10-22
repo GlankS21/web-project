@@ -5,7 +5,7 @@ import jakarta.validation.constraints.Size;
 
 public record CancelOrderRequest(
 
-        @Schema(example = "Ordered by mistake")
+        @Schema(description = "Причина отмены", example = "Заказал по ошибке")
         @Size(max = 255)
         String reason
 ) {

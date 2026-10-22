@@ -25,6 +25,8 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class UserProfileServiceImpl implements UserProfileService {
 
+    static final String PROFILE_NOT_FOUND = "profile.error.not-found";
+
     private final UserProfileRepository userProfileRepository;
     private final UserProfileMapper userProfileMapper;
 
@@ -80,7 +82,7 @@ public class UserProfileServiceImpl implements UserProfileService {
     public UserProfileResponse getProfile(UUID userId) {
         return userProfileRepository.findById(userId)
                 .map(userProfileMapper::toResponse)
-                .orElseThrow(() -> new ResourceNotFoundException("User profile", "id", userId));
+                .orElseThrow(() -> ResourceNotFoundException.of(PROFILE_NOT_FOUND));
     }
 
     private UserProfile findOrCreate(UUID userId, String email) {

@@ -10,22 +10,24 @@ import jakarta.validation.constraints.Size;
 
 public record CategoryRequest(
 
-        @Schema(example = "Điện thoại")
+        @Schema(example = "Смартфоны")
         @NotBlank @Size(max = 100)
         String name,
 
-        @Schema(description = "Generated from the name when omitted", example = "dien-thoai")
+        @Schema(description = "Если не указан, составляется из названия транслитерацией", example = "smartfony")
         @Size(max = 120)
         @Pattern(regexp = ValidationPatterns.SLUG, message = ValidationPatterns.SLUG_MESSAGE)
         String slug,
 
+        @Schema(example = "Смартфоны на Android и iOS")
         @Size(max = 500)
         String description,
 
-        @Schema(description = "Root category to nest under; omit for a root category. Only two levels are allowed.")
+        @Schema(description = "Корневая категория, в которую вложена эта; не указывается для корневой категории. "
+                + "Допускается только два уровня.")
         Long parentId,
 
-        @Schema(description = "Position among siblings, ascending", example = "1")
+        @Schema(description = "Позиция среди категорий того же уровня, по возрастанию", example = "1")
         @Min(0) @Max(10_000)
         Integer sortOrder
 ) {

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 
 interface PaginationProps {
   /** Zero-based, as in the API. */
@@ -12,6 +13,7 @@ interface PaginationProps {
 
 /** Page links (1-based in the URL and on screen) around the current page. */
 export function Pagination({ page, totalPages, basePath, params }: PaginationProps) {
+  const t = useTranslations("pagination");
   if (totalPages <= 1) {
     return null;
   }
@@ -40,10 +42,10 @@ export function Pagination({ page, totalPages, basePath, params }: PaginationPro
 
   const itemClass = "min-w-9 rounded-lg px-3 py-1.5 text-center text-sm";
   return (
-    <nav aria-label="Phân trang" className="mt-8 flex flex-wrap items-center justify-center gap-1">
+    <nav aria-label={t("label")} className="mt-8 flex flex-wrap items-center justify-center gap-1">
       {page > 0 && (
         <Link href={href(page - 1)} className={`${itemClass} text-slate-600 hover:bg-slate-100`}>
-          ‹ Trước
+          {t("previous")}
         </Link>
       )}
       {pages.map((item, index) =>
@@ -56,6 +58,7 @@ export function Pagination({ page, totalPages, basePath, params }: PaginationPro
             key={item}
             href={href(item)}
             aria-current={item === page ? "page" : undefined}
+            aria-label={t("page", { page: item + 1, total: totalPages })}
             className={`${itemClass} ${item === page ? "bg-brand-600 font-medium text-white" : "text-slate-700 hover:bg-slate-100"}`}
           >
             {item + 1}
@@ -64,7 +67,7 @@ export function Pagination({ page, totalPages, basePath, params }: PaginationPro
       )}
       {page < totalPages - 1 && (
         <Link href={href(page + 1)} className={`${itemClass} text-slate-600 hover:bg-slate-100`}>
-          Sau ›
+          {t("next")}
         </Link>
       )}
     </nav>

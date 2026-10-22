@@ -6,8 +6,16 @@ spring:
     url: jdbc:postgresql://${app.infra.postgres-host}:${app.infra.postgres-port}/product_db
     username: product_user
     password: ${PRODUCT_DB_PASSWORD}
+  servlet:
+    multipart:
+      # Slightly above app.catalog.image-max-size, so that the service itself reports the limit
+      max-file-size: ${PRODUCT_IMAGE_MULTIPART_MAX_SIZE:6MB}
+      max-request-size: ${PRODUCT_IMAGE_MULTIPART_MAX_SIZE:6MB}
 
 app:
   catalog:
     # ISO 4217 code of every catalogue price
-    currency: ${CATALOG_CURRENCY:VND}
+    currency: ${CATALOG_CURRENCY:RUB}
+    # Uploaded product images (a named Docker volume in docker-compose), created at startup if missing
+    image-storage-dir: ${PRODUCT_IMAGE_DIR:./data/product-images}
+    image-max-size: ${PRODUCT_IMAGE_MAX_SIZE:5MB}

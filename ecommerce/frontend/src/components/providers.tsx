@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { ToastProvider } from "@/components/toast";
 import { api } from "@/lib/client/api";
 import type { Session } from "@/lib/session";
 import type { Cart } from "@/lib/types";
@@ -45,7 +46,9 @@ export function Providers({ session, children }: { session: Session | null; chil
   const cart = useMemo(() => ({ count: userId ? count : null, refresh }), [userId, count, refresh]);
   return (
     <SessionContext.Provider value={session}>
-      <CartContext.Provider value={cart}>{children}</CartContext.Provider>
+      <CartContext.Provider value={cart}>
+        <ToastProvider>{children}</ToastProvider>
+      </CartContext.Provider>
     </SessionContext.Provider>
   );
 }

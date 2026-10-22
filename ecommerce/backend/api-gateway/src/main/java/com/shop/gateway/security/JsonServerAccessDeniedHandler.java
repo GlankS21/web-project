@@ -20,6 +20,6 @@ public class JsonServerAccessDeniedHandler implements ServerAccessDeniedHandler 
 
     @Override
     public Mono<Void> handle(ServerWebExchange exchange, AccessDeniedException denied) {
-        return errorResponseWriter.write(exchange, ErrorCode.FORBIDDEN, ErrorCode.FORBIDDEN.getDefaultMessage());
+        return errorResponseWriter.write(exchange, ErrorCode.FORBIDDEN);
     }
 }

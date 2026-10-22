@@ -34,7 +34,7 @@ spring:
             - id: product-service
               uri: lb://product-service
               predicates:
-                - Path=/api/products/**,/api/categories/**
+                - Path=/api/products/**,/api/categories/**,/api/reviews/**
               filters:
                 - name: CircuitBreaker
                   args:
@@ -159,6 +159,10 @@ app:
         - /api/auth/login
         - /api/auth/refresh
         - /api/auth/logout
+        - /api/auth/password/forgot
+        - /api/auth/password/reset
+        # Notifications of the payment provider (verified by payment-service against the provider's API)
+        - /api/payments/webhooks/**
         - /actuator/health
         - /actuator/health/**
         - /actuator/info
@@ -192,23 +196,25 @@ app:
         - /api/auth/login
         - /api/auth/register
         - /api/auth/refresh
+        - /api/auth/password/forgot
+        - /api/auth/password/reset
 
 springdoc:
   swagger-ui:
     urls:
-      - name: auth-service
+      - name: "Аутентификация (auth-service)"
         url: /docs/auth-service/v3/api-docs
-      - name: user-service
+      - name: "Профили и адреса (user-service)"
         url: /docs/user-service/v3/api-docs
-      - name: product-service
+      - name: "Каталог и отзывы (product-service)"
         url: /docs/product-service/v3/api-docs
-      - name: inventory-service
+      - name: "Склад (inventory-service)"
         url: /docs/inventory-service/v3/api-docs
-      - name: cart-service
+      - name: "Корзина (cart-service)"
         url: /docs/cart-service/v3/api-docs
-      - name: order-service
+      - name: "Заказы и промокоды (order-service)"
         url: /docs/order-service/v3/api-docs
-      - name: payment-service
+      - name: "Платежи (payment-service)"
         url: /docs/payment-service/v3/api-docs
-      - name: notification-service
+      - name: "Уведомления (notification-service)"
         url: /docs/notification-service/v3/api-docs

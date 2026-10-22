@@ -5,6 +5,7 @@ import com.shop.auth.dto.request.UpdateAccountStatusRequest;
 import com.shop.auth.dto.request.UpdateRolesRequest;
 import com.shop.auth.dto.response.AccountResponse;
 import com.shop.auth.service.AccountAdminService;
+import com.shop.common.autoconfigure.CommonMessagesAutoConfiguration;
 import com.shop.common.dto.ApiResponse;
 import com.shop.common.dto.PageResponse;
 import com.shop.common.security.SecurityUtils;
@@ -15,6 +16,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springdoc.core.annotations.ParameterObject;
+import org.springframework.context.MessageSource;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
@@ -30,7 +32,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.UUID;
 
-@Tag(name = "Account administration", description = "Roles and status of accounts (admin only)")
+@Tag(name = "Администрирование аккаунтов", description = "Роли и статус аккаунтов (только для администратора)")
 @SecurityRequirement(name = OpenApiConfig.BEARER_SCHEME)
 @PreAuthorize("hasRole('ADMIN')")
 @RestController
@@ -38,37 +40,48 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class AdminAccountController {
 
-    private final AccountAdminService accountAdminService;
+    static final String ROLES_UPDATED = "auth.admin.roles-updated";
+    static final String STATUS_UPDATED = "auth.admin.status-updated";
 
-    @Operation(summary = "Search accounts by email")
+    private final AccountAdminService accountAdminService;
+    private final MessageSource messageSource;
+
+    @Operation(summary = "Найти аккаунты по e-mail")
     @GetMapping
     public ApiResponse<PageResponse<AccountResponse>> search(
-            @Parameter(description = "Part of the email address")
+            @Parameter(description = "Часть адреса e-mail", example = "ivan.petrov")
             @RequestParam(name = "email", required = false) String email,
             @ParameterObject
             @PageableDefault(sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
         return ApiResponse.success(accountAdminService.searchAccounts(email, pageable));
     }
 
-    @Operation(summary = "Get an account")
+    @Operation(summary = "Получить аккаунт")
     @GetMapping("/{accountId}")
-    public ApiResponse<AccountResponse> get(@PathVariable("accountId") UUID accountId) {
+    public ApiResponse<AccountResponse> get(
+            @Parameter(description = "Идентификатор аккаунта") @PathVariable("accountId") UUID accountId) {
         return ApiResponse.success(accountAdminService.getAccount(accountId));
     }
 
-    @Operation(summary = "Replace the roles of an account")
+    @Operation(summary = "Заменить роли аккаунта")
     @PutMapping("/{accountId}/roles")
-    public ApiResponse<AccountResponse> updateRoles(@PathVariable("accountId") UUID accountId,
-                                                    @Valid @RequestBody UpdateRolesRequest request) {
-        return ApiResponse.success("Roles updated",
+    public ApiResponse<AccountResponse> updateRoles(
+            @Parameter(description = "Идентификатор аккаунта") @PathVariable("accountId") UUID accountId,
+            @Valid @RequestBody UpdateRolesRequest request) {
+        return ApiResponse.success(message(ROLES_UPDATED),
                 accountAdminService.updateRoles(SecurityUtils.currentUserId(), accountId, request));
     }
 
-    @Operation(summary = "Enable or disable an account (disabling revokes its sessions)")
+    @Operation(summary = "Разблокировать или заблокировать аккаунт (блокировка завершает его сеансы)")
     @PatchMapping("/{accountId}/status")
-    public ApiResponse<AccountResponse> updateStatus(@PathVariable("accountId") UUID accountId,
-                                                     @Valid @RequestBody UpdateAccountStatusRequest request) {
-        return ApiResponse.success("Status updated",
+    public ApiResponse<AccountResponse> updateStatus(
+            @Parameter(description = "Идентификатор аккаунта") @PathVariable("accountId") UUID accountId,
+            @Valid @RequestBody UpdateAccountStatusRequest request) {
+        return ApiResponse.success(message(STATUS_UPDATED),
                 accountAdminService.updateStatus(SecurityUtils.currentUserId(), accountId, request));
+    }
+
+    private String message(String key) {
+        return messageSource.getMessage(key, null, CommonMessagesAutoConfiguration.DEFAULT_LOCALE);
     }
 }

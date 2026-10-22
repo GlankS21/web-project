@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
 import Link from "next/link";
 import { Pagination, pageIndex } from "@/components/Pagination";
 import { Badge, PageTitle } from "@/components/ui";
@@ -7,16 +8,20 @@ import { apiGet, query } from "@/lib/server/data";
 import { param, type SearchParams } from "@/lib/search-params";
 import type { InventoryItem, PageResponse, ProductSummary } from "@/lib/types";
 
-export const metadata: Metadata = { title: "Tồn kho" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getTranslations("adminInventory"))("title") };
+}
 
 export default async function AdminInventoryPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const params = await searchParams;
   const lowStock = param(params, "lowStock") === "true";
   const page = pageIndex(param(params, "page"));
-  const items = await apiGet<PageResponse<InventoryItem>>(
-    `/api/inventory${query({ lowStock: lowStock || undefined, page, size: 20 })}`,
-    { auth: true },
-  );
+  const [items, t] = await Promise.all([
+    apiGet<PageResponse<InventoryItem>>(`/api/inventory${query({ lowStock: lowStock || undefined, page, size: 20 })}`, {
+      auth: true,
+    }),
+    getTranslations("adminInventory"),
+  ]);
   // Names come from product-service; the stock list still renders without them
   const ids = items.content.map((item) => item.productId);
   const names = new Map<number, string>(
@@ -32,25 +37,25 @@ export default async function AdminInventoryPage({ searchParams }: { searchParam
 
   return (
     <>
-      <PageTitle>Tồn kho</PageTitle>
-      <nav className="mb-4 flex gap-2" aria-label="Lọc tồn kho">
+      <PageTitle>{t("title")}</PageTitle>
+      <nav className="mb-4 flex gap-2" aria-label={t("filter")}>
         <Link href="/admin/inventory" className={tabClass(!lowStock)}>
-          Tất cả
+          {t("all")}
         </Link>
         <Link href="/admin/inventory?lowStock=true" className={tabClass(lowStock)}>
-          Sắp hết hàng
+          {t("lowStock")}
         </Link>
       </nav>
       <div className="card overflow-x-auto">
         <table className="table">
           <thead>
             <tr>
-              <th>Sản phẩm</th>
-              <th className="text-right">Tồn thực tế</th>
-              <th className="text-right">Đang giữ</th>
-              <th className="text-right">Có thể bán</th>
-              <th className="text-right">Ngưỡng cảnh báo</th>
-              <th>Cập nhật</th>
+              <th>{t("product")}</th>
+              <th className="text-right">{t("onHand")}</th>
+              <th className="text-right">{t("reserved")}</th>
+              <th className="text-right">{t("available")}</th>
+              <th className="text-right">{t("threshold")}</th>
+              <th>{t("updatedAt")}</th>
             </tr>
           </thead>
           <tbody>
@@ -58,7 +63,7 @@ export default async function AdminInventoryPage({ searchParams }: { searchParam
               <tr key={item.productId}>
                 <td>
                   <Link href={`/admin/inventory/${item.productId}`} className="link font-medium">
-                    {names.get(item.productId) ?? `Sản phẩm #${item.productId}`}
+                    {names.get(item.productId) ?? t("productFallback", { id: item.productId })}
                   </Link>
                   <p className="text-xs text-slate-500">{item.sku ?? "—"}</p>
                 </td>
@@ -73,9 +78,14 @@ export default async function AdminInventoryPage({ searchParams }: { searchParam
             ))}
           </tbody>
         </table>
-        {items.content.length === 0 && <p className="p-4 text-sm text-slate-500">Không có mặt hàng nào.</p>}
+        {items.content.length === 0 && <p className="p-4 text-sm text-slate-500">{t("empty")}</p>}
       </div>
-      <Pagination page={items.page} totalPages={items.totalPages} basePath="/admin/inventory" params={{ lowStock: lowStock ? "true" : undefined }} />
+      <Pagination
+        page={items.page}
+        totalPages={items.totalPages}
+        basePath="/admin/inventory"
+        params={{ lowStock: lowStock ? "true" : undefined }}
+      />
     </>
   );
 }

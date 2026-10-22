@@ -54,7 +54,7 @@ class NotificationServiceImplTest {
     @BeforeEach
     void setUp() {
         NotificationProperties properties = new NotificationProperties(null, "TechShop",
-                new NotificationProperties.Retry(3, Duration.ofMinutes(2)));
+                new NotificationProperties.Retry(3, Duration.ofMinutes(2)), null);
         service = new NotificationServiceImpl(notificationRepository, emailSender, new NotificationMapperImpl(),
                 properties, new TransactionTemplate(mock(PlatformTransactionManager.class)),
                 Clock.fixed(NOW, ZoneOffset.UTC));
@@ -71,9 +71,9 @@ class NotificationServiceImplTest {
         when(notificationRepository.findById(saved.getId())).thenReturn(Optional.of(saved));
 
         UUID eventId = UUID.randomUUID();
-        service.notify(eventId, rendered("jane@example.com"));
+        service.notify(eventId, rendered("ivan.petrov@example.ru"));
 
-        verify(emailSender).send("jane@example.com", "Subject", "Body");
+        verify(emailSender).send("ivan.petrov@example.ru", "Subject", "Body");
         assertThat(saved.getStatus()).isEqualTo(NotificationStatus.SENT);
         assertThat(saved.getSentAt()).isEqualTo(NOW);
         assertThat(saved.getAttempts()).isEqualTo(1);
@@ -84,7 +84,7 @@ class NotificationServiceImplTest {
         UUID eventId = UUID.randomUUID();
         when(notificationRepository.existsByEventId(eventId)).thenReturn(true);
 
-        service.notify(eventId, rendered("jane@example.com"));
+        service.notify(eventId, rendered("ivan.petrov@example.ru"));
 
         verify(notificationRepository, never()).save(any());
         verifyNoInteractions(emailSender);
@@ -126,7 +126,8 @@ class NotificationServiceImplTest {
 
     @Test
     void resend_failsForAnUnknownNotification() {
-        assertThatThrownBy(() -> service.resend(UUID.randomUUID())).isInstanceOf(ResourceNotFoundException.class);
+        assertThatThrownBy(() -> service.resend(UUID.randomUUID())).isInstanceOf(ResourceNotFoundException.class)
+                .hasMessage("notification.error.not-found");
         verifyNoInteractions(emailSender);
     }
 
@@ -139,7 +140,7 @@ class NotificationServiceImplTest {
         notification.setId(UUID.randomUUID());
         notification.setEventId(UUID.randomUUID());
         notification.setType(NotificationType.WELCOME);
-        notification.setRecipient("jane@example.com");
+        notification.setRecipient("ivan.petrov@example.ru");
         notification.setSubject("Subject");
         notification.setBody("Body");
         notification.setStatus(status);

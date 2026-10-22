@@ -1,15 +1,19 @@
 "use client";
 
+import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Badge } from "@/components/ui";
 import { api } from "@/lib/client/api";
-import { errorMessage } from "@/lib/errors";
+import { useErrorMessage } from "@/lib/client/use-error-message";
 import { formatDate, formatDateTime } from "@/lib/format";
 import type { Account, RoleName } from "@/lib/types";
 
 /** One account with its role and enabled switches; an administrator cannot lock themselves out. */
 export function AccountRow({ account, self }: { account: Account; self: boolean }) {
+  const t = useTranslations("adminAccounts");
+  const errorMessage = useErrorMessage();
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +34,9 @@ export function AccountRow({ account, self }: { account: Account; self: boolean 
 
   const toggleAdmin = () => {
     const roles: RoleName[] = admin ? ["ROLE_CUSTOMER"] : ["ROLE_CUSTOMER", "ROLE_ADMIN"];
-    const question = admin ? `Thu hồi quyền quản trị của ${account.email}?` : `Cấp quyền quản trị cho ${account.email}?`;
+    const question = admin
+      ? t("revokeAdminConfirm", { email: account.email })
+      : t("grantAdminConfirm", { email: account.email });
     if (window.confirm(question)) {
       void run(() => api.put(`/auth/admin/accounts/${account.id}/roles`, { roles }));
     }
@@ -38,8 +44,8 @@ export function AccountRow({ account, self }: { account: Account; self: boolean 
 
   const toggleEnabled = () => {
     const question = account.enabled
-      ? `Khoá tài khoản ${account.email}? Mọi phiên đăng nhập của tài khoản sẽ kết thúc.`
-      : `Mở khoá tài khoản ${account.email}?`;
+      ? t("lockConfirm", { email: account.email })
+      : t("unlockConfirm", { email: account.email });
     if (window.confirm(question)) {
       void run(() => api.patch(`/auth/admin/accounts/${account.id}/status`, { enabled: !account.enabled }));
     }
@@ -48,26 +54,28 @@ export function AccountRow({ account, self }: { account: Account; self: boolean 
   return (
     <tr>
       <td>
-        <span className="font-medium text-slate-900">{account.email}</span>
-        {self && <span className="ml-2 text-xs text-slate-500">(bạn)</span>}
+        <Link href={`/admin/accounts/${account.id}`} className="font-medium text-slate-900 hover:text-brand-600">
+          {account.email}
+        </Link>
+        {self && <span className="ml-2 text-xs text-slate-500">{t("you")}</span>}
         {error && <p className="mt-1 text-xs text-rose-600">{error}</p>}
       </td>
       <td>
         <div className="flex items-center gap-2">
-          {admin ? <Badge tone="info">Quản trị</Badge> : <Badge>Khách hàng</Badge>}
+          {admin ? <Badge tone="info">{t("admin")}</Badge> : <Badge>{t("customer")}</Badge>}
           {!self && (
             <button type="button" className="link text-xs" disabled={busy} onClick={toggleAdmin}>
-              {admin ? "Thu hồi" : "Cấp quyền"}
+              {admin ? t("revokeAdmin") : t("grantAdmin")}
             </button>
           )}
         </div>
       </td>
       <td>
         <div className="flex items-center gap-2">
-          {account.enabled ? <Badge tone="success">Hoạt động</Badge> : <Badge tone="danger">Đã khoá</Badge>}
+          {account.enabled ? <Badge tone="success">{t("enabled")}</Badge> : <Badge tone="danger">{t("disabled")}</Badge>}
           {!self && (
             <button type="button" className="link text-xs" disabled={busy} onClick={toggleEnabled}>
-              {account.enabled ? "Khoá" : "Mở khoá"}
+              {account.enabled ? t("lock") : t("unlock")}
             </button>
           )}
         </div>

@@ -7,12 +7,12 @@ import jakarta.validation.constraints.Size;
 
 public record UpdateOrderStatusRequest(
 
-        @Schema(description = "SHIPPED (from PAID) or DELIVERED (from SHIPPED); use the cancel endpoint to cancel",
+        @Schema(description = "SHIPPED (из PAID) или DELIVERED (из SHIPPED); для отмены используйте отдельный метод",
                 example = "SHIPPED")
         @NotNull
         OrderStatus status,
 
-        @Schema(example = "Handed to the courier, tracking number VN123456")
+        @Schema(description = "Комментарий в истории статусов", example = "Передан курьеру, трек-номер RA123456789RU")
         @Size(max = 255)
         String note
 ) {

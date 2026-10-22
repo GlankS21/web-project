@@ -1,9 +1,11 @@
 package com.shop.order.service.impl;
 
+import com.shop.common.autoconfigure.CommonMessagesAutoConfiguration;
 import com.shop.common.constant.MessagingConstants;
 import com.shop.common.dto.ApiResponse;
 import com.shop.common.event.OrderCancelledEvent;
 import com.shop.common.event.OrderCreatedEvent;
+import com.shop.common.event.OrderDeliveredEvent;
 import com.shop.common.exception.BadRequestException;
 import com.shop.common.exception.BusinessException;
 import com.shop.common.exception.ResourceNotFoundException;
@@ -11,17 +13,23 @@ import com.shop.common.security.AuthenticatedUser;
 import com.shop.order.client.ProductClient;
 import com.shop.order.client.ProductSummary;
 import com.shop.order.config.OrderProperties;
+import com.shop.order.dto.request.CouponPreviewRequest;
 import com.shop.order.dto.request.CreateOrderRequest;
 import com.shop.order.dto.request.OrderItemRequest;
 import com.shop.order.dto.request.ShippingAddressRequest;
 import com.shop.order.dto.request.UpdateOrderStatusRequest;
+import com.shop.order.dto.response.CouponPreviewResponse;
 import com.shop.order.dto.response.OrderResponse;
+import com.shop.order.entity.Coupon;
+import com.shop.order.entity.CouponDiscountType;
 import com.shop.order.entity.Order;
+import com.shop.order.entity.OrderItem;
 import com.shop.order.entity.OrderStatus;
 import com.shop.order.entity.PaymentMethod;
 import com.shop.order.mapper.OrderMapperImpl;
 import com.shop.order.messaging.outbox.OutboxService;
 import com.shop.order.repository.OrderRepository;
+import com.shop.order.service.CouponLedger;
 import com.shop.order.service.OrderLifecycle;
 import com.shop.order.service.OrderService.OrderPlacement;
 import com.shop.order.util.OrderNumberGenerator;
@@ -66,19 +74,23 @@ class OrderServiceImplTest {
     private ProductClient productClient;
     @Mock
     private OutboxService outboxService;
+    @Mock
+    private CouponLedger couponLedger;
 
     private OrderServiceImpl service;
     private final AuthenticatedUser customer =
-            new AuthenticatedUser(UUID.randomUUID(), "jane@example.com", Set.of("ROLE_CUSTOMER"));
+            new AuthenticatedUser(UUID.randomUUID(), "ivan.petrov@example.ru", Set.of("ROLE_CUSTOMER"));
 
     @BeforeEach
     void setUp() {
         Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
         OrderProperties properties = new OrderProperties(3, 5,
                 new OrderProperties.Shipping(new BigDecimal("30000"), new BigDecimal("500000")),
-                Duration.ofMinutes(15), null);
+                Duration.ofMinutes(15), null, null, null);
         service = new OrderServiceImpl(orderRepository, productClient,
-                new OrderLifecycle(orderRepository, outboxService, clock), new OrderNumberGenerator(clock),
+                new OrderLifecycle(orderRepository, outboxService, couponLedger, clock,
+                        new CommonMessagesAutoConfiguration().messageSource()), couponLedger,
+                new OrderNumberGenerator(clock),
                 new OrderMapperImpl(), properties, new TransactionTemplate(mock(PlatformTransactionManager.class)),
                 clock);
     }
@@ -101,14 +113,75 @@ class OrderServiceImplTest {
         assertThat(order.subtotal()).isEqualByComparingTo("350000");
         assertThat(order.shippingFee()).isEqualByComparingTo("30000");
         assertThat(order.totalAmount()).isEqualByComparingTo("380000");
-        assertThat(order.currency()).isEqualTo("VND");
-        assertThat(order.userEmail()).isEqualTo("jane@example.com");
+        assertThat(order.currency()).isEqualTo("RUB");
+        assertThat(order.userEmail()).isEqualTo("ivan.petrov@example.ru");
 
         ArgumentCaptor<OrderCreatedEvent> event = ArgumentCaptor.forClass(OrderCreatedEvent.class);
         verify(outboxService).enqueue(eq(MessagingConstants.ORDER_EXCHANGE), eq(MessagingConstants.ORDER_CREATED_KEY),
                 event.capture(), eq(order.id()));
         assertThat(event.getValue().items()).hasSize(2);
         assertThat(event.getValue().totalAmount()).isEqualByComparingTo("380000");
+    }
+
+    @Test
+    void placeOrder_appliesAndRedeemsTheCoupon() {
+        when(productClient.getProductsByIds(anyList())).thenReturn(ApiResponse.success(List.of(
+                product(1L, "120000"), product(2L, "55000"))));
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> withId(invocation.getArgument(0)));
+        Coupon coupon = coupon(CouponDiscountType.PERCENTAGE, "10");
+        when(couponLedger.lockApplicable(" welcome10 ", customer.id(), new BigDecimal("350000")))
+                .thenReturn(Optional.of(coupon));
+
+        OrderResponse order = service.placeOrder(customer,
+                request(" welcome10 ", line(1L, 2), line(2L, 2)), null).order();
+
+        // Shipping is computed on the subtotal before the discount
+        assertThat(order.subtotal()).isEqualByComparingTo("350000");
+        assertThat(order.couponCode()).isEqualTo("WELCOME10");
+        assertThat(order.discountAmount()).isEqualByComparingTo("35000");
+        assertThat(order.shippingFee()).isEqualByComparingTo("30000");
+        assertThat(order.totalAmount()).isEqualByComparingTo("345000");
+        ArgumentCaptor<Order> saved = ArgumentCaptor.forClass(Order.class);
+        verify(couponLedger).redeem(eq(coupon), saved.capture());
+        assertThat(saved.getValue().getId()).isEqualTo(order.id());
+        ArgumentCaptor<OrderCreatedEvent> event = ArgumentCaptor.forClass(OrderCreatedEvent.class);
+        verify(outboxService).enqueue(eq(MessagingConstants.ORDER_EXCHANGE), eq(MessagingConstants.ORDER_CREATED_KEY),
+                event.capture(), eq(order.id()));
+        assertThat(event.getValue().totalAmount()).isEqualByComparingTo("345000");
+    }
+
+    @Test
+    void placeOrder_failsWithoutSavingWhenTheCouponCannotBeUsed() {
+        when(productClient.getProductsByIds(anyList())).thenReturn(ApiResponse.success(List.of(product(1L, "1000"))));
+        when(couponLedger.lockApplicable("EXPIRED", customer.id(), new BigDecimal("1000")))
+                .thenThrow(new BusinessException("coupon.error.expired"));
+
+        assertThatThrownBy(() -> service.placeOrder(customer, request("EXPIRED", line(1L, 1)), null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("coupon.error.expired");
+        verify(orderRepository, never()).save(any());
+        verify(couponLedger, never()).redeem(any(), any());
+        verifyNoInteractions(outboxService);
+    }
+
+    @Test
+    void previewCoupon_pricesTheCartLikeTheCheckout() {
+        when(productClient.getProductsByIds(anyList())).thenReturn(ApiResponse.success(List.of(product(1L, "250000"))));
+        when(couponLedger.findApplicable("sale", customer.id(), new BigDecimal("500000")))
+                .thenReturn(coupon(CouponDiscountType.FIXED_AMOUNT, "20000"));
+
+        CouponPreviewResponse preview = service.previewCoupon(customer,
+                new CouponPreviewRequest("sale", List.of(line(1L, 1), line(1L, 1))));
+
+        assertThat(preview.code()).isEqualTo("WELCOME10");
+        assertThat(preview.discountType()).isEqualTo(CouponDiscountType.FIXED_AMOUNT);
+        assertThat(preview.subtotal()).isEqualByComparingTo("500000");
+        assertThat(preview.discountAmount()).isEqualByComparingTo("20000");
+        // Free shipping from the threshold, judged before the discount
+        assertThat(preview.shippingFee()).isEqualByComparingTo("0");
+        assertThat(preview.totalAmount()).isEqualByComparingTo("480000");
+        assertThat(preview.currency()).isEqualTo("RUB");
+        verifyNoInteractions(orderRepository, outboxService);
     }
 
     @Test
@@ -128,7 +201,8 @@ class OrderServiceImplTest {
 
         assertThatThrownBy(() -> service.placeOrder(customer, request(line(1L, 1), line(9L, 1)), null))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("[9]");
+                .hasMessage("order.error.products-unavailable")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getMessageArgs()).containsExactly("9"));
         verify(orderRepository, never()).save(any());
         verifyNoInteractions(outboxService);
     }
@@ -137,7 +211,8 @@ class OrderServiceImplTest {
     void placeOrder_enforcesLimitsBeforeCallingTheCatalogue() {
         assertThatThrownBy(() -> service.placeOrder(customer, request(line(1L, 3), line(1L, 3)), null))
                 .isInstanceOf(BadRequestException.class)
-                .hasMessageContaining("At most 5 units");
+                .hasMessage("order.error.too-many-units")
+                .satisfies(ex -> assertThat(((BadRequestException) ex).getMessageArgs()).containsExactly(5, 1L));
         assertThatThrownBy(() -> service.placeOrder(customer,
                 request(line(1L, 1), line(2L, 1), line(3L, 1), line(4L, 1)), null))
                 .isInstanceOf(BadRequestException.class);
@@ -165,26 +240,41 @@ class OrderServiceImplTest {
         when(orderRepository.findByIdForUpdate(order.getId())).thenReturn(Optional.of(order));
         when(orderRepository.saveAndFlush(order)).thenReturn(order);
 
-        OrderResponse response = service.cancelOrder(order.getId(), customer, "Changed my mind");
+        OrderResponse response = service.cancelOrder(order.getId(), customer, " Передумал ");
 
         assertThat(response.status()).isEqualTo(OrderStatus.CANCELLED);
-        assertThat(response.cancellationReason()).isEqualTo("Cancelled by customer: Changed my mind");
+        assertThat(response.cancellationReason()).isEqualTo("Отменён покупателем: Передумал");
         verify(outboxService).enqueue(eq(MessagingConstants.ORDER_EXCHANGE), eq(MessagingConstants.ORDER_CANCELLED_KEY),
                 any(OrderCancelledEvent.class), eq(order.getId()));
     }
 
     @Test
-    void cancelOrder_hidesOrdersOfOtherCustomersAndRefusesPaidOrders() {
+    void cancelOrder_byAnAdministratorSaysSo() {
+        AuthenticatedUser admin = new AuthenticatedUser(UUID.randomUUID(), "admin@example.ru", Set.of("ROLE_ADMIN"));
+        Order order = order(OrderStatus.PAID, customer.id());
+        when(orderRepository.findByIdForUpdate(order.getId())).thenReturn(Optional.of(order));
+        when(orderRepository.saveAndFlush(order)).thenReturn(order);
+
+        assertThat(service.cancelOrder(order.getId(), admin, null).cancellationReason())
+                .isEqualTo("Отменён администратором");
+    }
+
+    @Test
+    void cancelOrder_hidesOrdersOfOtherCustomersAndRefusesShippedOrders() {
         Order foreign = order(OrderStatus.PENDING, UUID.randomUUID());
         when(orderRepository.findByIdForUpdate(foreign.getId())).thenReturn(Optional.of(foreign));
         assertThatThrownBy(() -> service.cancelOrder(foreign.getId(), customer, null))
                 .isInstanceOf(ResourceNotFoundException.class);
 
-        Order paid = order(OrderStatus.PAID, customer.id());
-        when(orderRepository.findByIdForUpdate(paid.getId())).thenReturn(Optional.of(paid));
-        assertThatThrownBy(() -> service.cancelOrder(paid.getId(), customer, null))
+        Order shipped = order(OrderStatus.SHIPPED, customer.id());
+        when(orderRepository.findByIdForUpdate(shipped.getId())).thenReturn(Optional.of(shipped));
+        assertThatThrownBy(() -> service.cancelOrder(shipped.getId(), customer, null))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("can no longer be cancelled");
+                .hasMessage("order.error.not-cancellable")
+                .satisfies(ex -> assertThat(new CommonMessagesAutoConfiguration().messageSource().getMessage(
+                        ex.getMessage(), ((BusinessException) ex).getMessageArgs(),
+                        CommonMessagesAutoConfiguration.DEFAULT_LOCALE))
+                        .isEqualTo("Заказ ORD-20261021-ABCDEF в статусе «Отправлен» больше нельзя отменить"));
         verifyNoInteractions(outboxService);
     }
 
@@ -200,11 +290,43 @@ class OrderServiceImplTest {
         when(orderRepository.saveAndFlush(order)).thenReturn(order);
 
         OrderResponse shipped = service.updateStatus(order.getId(),
-                new UpdateOrderStatusRequest(OrderStatus.SHIPPED, "Tracking VN123"), adminId);
+                new UpdateOrderStatusRequest(OrderStatus.SHIPPED, "Трек-номер RA123456789RU"), adminId);
 
         assertThat(shipped.status()).isEqualTo(OrderStatus.SHIPPED);
         assertThat(shipped.shippedAt()).isEqualTo(NOW);
         assertThat(shipped.statusHistory().getLast().changedBy()).isEqualTo(adminId);
+        verifyNoInteractions(outboxService);
+    }
+
+    @Test
+    void updateStatus_publishesTheDeliveryWithTheItems() {
+        UUID adminId = UUID.randomUUID();
+        Order order = order(OrderStatus.SHIPPED, customer.id());
+        OrderItem item = new OrderItem();
+        item.setProductId(7L);
+        item.setSku("SKU-7");
+        item.setProductName("Product 7");
+        item.setUnitPrice(new BigDecimal("50000"));
+        item.setQuantity(2);
+        item.setLineTotal(new BigDecimal("100000"));
+        order.addItem(item);
+        when(orderRepository.findByIdForUpdate(order.getId())).thenReturn(Optional.of(order));
+        when(orderRepository.saveAndFlush(order)).thenReturn(order);
+
+        OrderResponse delivered = service.updateStatus(order.getId(),
+                new UpdateOrderStatusRequest(OrderStatus.DELIVERED, "Получен покупателем лично"), adminId);
+
+        assertThat(delivered.status()).isEqualTo(OrderStatus.DELIVERED);
+        assertThat(delivered.deliveredAt()).isEqualTo(NOW);
+        ArgumentCaptor<OrderDeliveredEvent> event = ArgumentCaptor.forClass(OrderDeliveredEvent.class);
+        verify(outboxService).enqueue(eq(MessagingConstants.ORDER_EXCHANGE),
+                eq(MessagingConstants.ORDER_DELIVERED_KEY), event.capture(), eq(order.getId()));
+        assertThat(event.getValue().orderId()).isEqualTo(order.getId());
+        assertThat(event.getValue().userId()).isEqualTo(customer.id());
+        assertThat(event.getValue().items()).singleElement().satisfies(payload -> {
+            assertThat(payload.productId()).isEqualTo(7L);
+            assertThat(payload.quantity()).isEqualTo(2);
+        });
     }
 
     private Order order(OrderStatus status, UUID userId) {
@@ -212,10 +334,10 @@ class OrderServiceImplTest {
         order.setId(UUID.randomUUID());
         order.setOrderNumber("ORD-20261021-ABCDEF");
         order.setUserId(userId);
-        order.setUserEmail("jane@example.com");
-        order.setPaymentMethod(PaymentMethod.CARD);
+        order.setUserEmail("ivan.petrov@example.ru");
+        order.setPaymentMethod(PaymentMethod.ONLINE);
         order.setTotalAmount(new BigDecimal("100000"));
-        order.setCurrency("VND");
+        order.setCurrency("RUB");
         order.markPlaced(NOW);
         order.setStatus(status);
         return order;
@@ -227,7 +349,7 @@ class OrderServiceImplTest {
     }
 
     private static ProductSummary product(Long id, String price) {
-        return new ProductSummary(id, "SKU-" + id, "Product " + id, new BigDecimal(price), "VND",
+        return new ProductSummary(id, "SKU-" + id, "Product " + id, new BigDecimal(price), "RUB",
                 "https://img/" + id + ".jpg", "ACTIVE");
     }
 
@@ -236,8 +358,22 @@ class OrderServiceImplTest {
     }
 
     private static CreateOrderRequest request(OrderItemRequest... lines) {
-        return new CreateOrderRequest(List.of(lines), new ShippingAddressRequest("Jane Doe", "+84901234567",
-                "12 Nguyen Hue", null, "Ben Nghe", "District 1", "Ho Chi Minh City", null, "VN"),
-                PaymentMethod.CARD, null);
+        return request(null, lines);
+    }
+
+    private static CreateOrderRequest request(String couponCode, OrderItemRequest... lines) {
+        return new CreateOrderRequest(List.of(lines), new ShippingAddressRequest("Иван Петров", "+79161234567",
+                "ул. Тверская, д. 7", "кв. 12", "Тверской", "ЦАО", "Москва", "125009", "RU"),
+                PaymentMethod.ONLINE, null, couponCode);
+    }
+
+    private static Coupon coupon(CouponDiscountType type, String value) {
+        Coupon coupon = new Coupon();
+        coupon.setId(1L);
+        coupon.setCode("WELCOME10");
+        coupon.setDiscountType(type);
+        coupon.setDiscountValue(new BigDecimal(value));
+        coupon.setActive(true);
+        return coupon;
     }
 }

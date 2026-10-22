@@ -1,5 +1,6 @@
 package com.shop.inventory.service.impl;
 
+import com.shop.common.autoconfigure.CommonMessagesAutoConfiguration;
 import com.shop.common.dto.PageResponse;
 import com.shop.common.event.ProductCreatedEvent;
 import com.shop.common.exception.BadRequestException;
@@ -19,6 +20,7 @@ import com.shop.inventory.repository.StockMovementRepository;
 import com.shop.inventory.service.InventoryService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.MessageSource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -41,6 +43,7 @@ public class InventoryServiceImpl implements InventoryService {
     private final StockMovementRepository stockMovementRepository;
     private final InventoryMapper inventoryMapper;
     private final InventoryProperties properties;
+    private final MessageSource messageSource;
 
     @Override
     @Transactional(readOnly = true)
@@ -56,7 +59,7 @@ public class InventoryServiceImpl implements InventoryService {
     public InventoryItemResponse getItem(Long productId) {
         return inventoryItemRepository.findById(productId)
                 .map(inventoryMapper::toResponse)
-                .orElseThrow(() -> new ResourceNotFoundException("Stock record", "productId", productId));
+                .orElseThrow(() -> ResourceNotFoundException.of("inventory.error.item-not-found", productId));
     }
 
     @Override
@@ -67,8 +70,7 @@ public class InventoryServiceImpl implements InventoryService {
             return List.of();
         }
         if (ids.size() > MAX_AVAILABILITY_BATCH_SIZE) {
-            throw new BadRequestException("At most %d product ids can be requested at once"
-                    .formatted(MAX_AVAILABILITY_BATCH_SIZE));
+            throw new BadRequestException("inventory.error.availability-batch-too-large", MAX_AVAILABILITY_BATCH_SIZE);
         }
         Map<Long, InventoryItem> byId = inventoryItemRepository.findAllByProductIdIn(ids).stream()
                 .collect(Collectors.toMap(InventoryItem::getProductId, Function.identity()));
@@ -84,7 +86,7 @@ public class InventoryServiceImpl implements InventoryService {
     public InventoryItemResponse adjustStock(Long productId, StockAdjustmentRequest request, UUID actorId) {
         int change = request.quantityChange();
         if (change == 0) {
-            throw new BadRequestException("quantityChange must not be 0");
+            throw new BadRequestException("inventory.error.zero-change");
         }
         InventoryItem item = findForUpdateOrNew(productId);
         item.adjust(change);
@@ -100,7 +102,9 @@ public class InventoryServiceImpl implements InventoryService {
         if (request.lowStockThreshold() != null) {
             item.setLowStockThreshold(request.lowStockThreshold());
         }
-        String reason = request.reason() != null ? request.reason() : "Stock count";
+        String reason = request.reason() != null ? request.reason()
+                : messageSource.getMessage("inventory.movement.stock-count", null,
+                CommonMessagesAutoConfiguration.DEFAULT_LOCALE);
         return save(item, change, reason, actorId);
     }
 
@@ -108,7 +112,7 @@ public class InventoryServiceImpl implements InventoryService {
     @Transactional(readOnly = true)
     public PageResponse<StockMovementResponse> listMovements(Long productId, Pageable pageable) {
         if (!inventoryItemRepository.existsById(productId)) {
-            throw new ResourceNotFoundException("Stock record", "productId", productId);
+            throw ResourceNotFoundException.of("inventory.error.item-not-found", productId);
         }
         return PageResponse.from(stockMovementRepository.findAllByProductId(productId, pageable),
                 inventoryMapper::toResponse);

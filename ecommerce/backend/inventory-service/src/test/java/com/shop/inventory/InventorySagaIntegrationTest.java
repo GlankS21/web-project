@@ -51,6 +51,7 @@ import java.util.function.BooleanSupplier;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -118,7 +119,7 @@ class InventorySagaIntegrationTest {
         assertThat(stock(19L).at("/data/quantityReserved").asInt()).isEqualTo(5);
 
         publishOrderEvent(MessagingConstants.ORDER_CONFIRMED_KEY, new OrderConfirmedEvent(UUID.randomUUID(),
-                Instant.now(), orderId, "ORD-COMMIT", UUID.randomUUID(), "jane@example.com", BigDecimal.TEN, "VND"));
+                Instant.now(), orderId, "ORD-COMMIT", UUID.randomUUID(), "jane@example.com", BigDecimal.TEN, "RUB"));
         waitUntil(() -> inventoryItemRepository.findById(19L).orElseThrow().getQuantityOnHand() == 195);
 
         assertThat(stock(19L).at("/data/quantityReserved").asInt()).isZero();
@@ -147,7 +148,8 @@ class InventorySagaIntegrationTest {
         });
         assertThat(failed).isNotNull();
         assertThat(failed.orderId()).isEqualTo(orderId);
-        assertThat(failed.reason()).contains("product 17 (requested 1, available 0)");
+        assertThat(failed.reason()).isEqualTo(
+                "Недостаточно товара на складе: товар 17 (заказано 1 шт., в наличии 0 шт.)");
         assertThat(stock(16L).at("/data/quantityReserved").asInt()).isZero();
     }
 
@@ -216,8 +218,50 @@ class InventorySagaIntegrationTest {
         mockMvc.perform(post("/api/inventory/17/adjustments")
                         .header(HttpHeaders.AUTHORIZATION, adminToken())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("quantityChange", -1, "reason", "Lost"))))
-                .andExpect(status().isUnprocessableEntity());
+                        .content(objectMapper.writeValueAsString(Map.of("quantityChange", -1, "reason", "Утеря"))))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.message").value("Остаток товара 17 не может стать меньше зарезервированного количества (0 шт.)"));
+    }
+
+    @Test
+    void errorsAreReturnedInRussian() throws Exception {
+        mockMvc.perform(get("/api/inventory/12345").header(HttpHeaders.AUTHORIZATION, adminToken()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"))
+                .andExpect(jsonPath("$.message").value("Складская запись товара 12345 не найдена"));
+
+        mockMvc.perform(post("/api/inventory/1/adjustments")
+                        .header(HttpHeaders.AUTHORIZATION, adminToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("quantityChange", 0, "reason", "Пересчёт"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Изменение количества не может быть равно 0"));
+
+        mockMvc.perform(post("/api/inventory/1/adjustments")
+                        .header(HttpHeaders.AUTHORIZATION, adminToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("quantityChange", 1))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.message").value("Проверьте правильность заполнения полей"))
+                .andExpect(jsonPath("$.violations[0].field").value("reason"))
+                .andExpect(jsonPath("$.violations[0].message").value("не должно быть пустым"));
+    }
+
+    @Test
+    void stockTakeWithoutReasonIsRecordedAsAStockCount() throws Exception {
+        mockMvc.perform(put("/api/inventory/20")
+                        .header(HttpHeaders.AUTHORIZATION, adminToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("quantityOnHand", 30))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("Остаток обновлён"))
+                .andExpect(jsonPath("$.data.quantityOnHand").value(30));
+
+        mockMvc.perform(get("/api/inventory/20/movements").header(HttpHeaders.AUTHORIZATION, adminToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content[0].reason").value("Инвентаризация"))
+                .andExpect(jsonPath("$.data.content[1].reason").value("Начальный остаток"));
     }
 
     /**
@@ -248,7 +292,7 @@ class InventorySagaIntegrationTest {
 
     private OrderCreatedEvent orderCreated(UUID orderId, String orderNumber, OrderItemPayload... lines) {
         return new OrderCreatedEvent(UUID.randomUUID(), Instant.now(), orderId, orderNumber, UUID.randomUUID(),
-                "jane@example.com", List.of(lines), BigDecimal.TEN, "VND");
+                "jane@example.com", List.of(lines), BigDecimal.TEN, "RUB");
     }
 
     private OrderItemPayload line(Long productId, int quantity) {

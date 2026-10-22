@@ -4,6 +4,7 @@ import com.shop.common.event.OrderCancelledEvent;
 import com.shop.common.event.OrderConfirmedEvent;
 import com.shop.common.event.OrderCreatedEvent;
 import com.shop.common.event.OrderItemPayload;
+import com.shop.common.event.PasswordResetRequestedEvent;
 import com.shop.common.event.UserRegisteredEvent;
 import com.shop.notification.config.NotificationProperties;
 import com.shop.notification.entity.NotificationType;
@@ -12,78 +13,130 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
- * Plain-text e-mails (in Vietnamese, the language of the shop's customers) rendered from events.
+ * Plain-text e-mails in Russian, the language of the shop's customers, rendered from events.
+ * Amounts are written as {@code 1 234,50 ₽} and times as {@code dd.MM.yyyy HH:mm}, Moscow time.
  */
 @Component
 @RequiredArgsConstructor
 public class NotificationTemplates {
 
+    static final ZoneId SHOP_ZONE = ZoneId.of("Europe/Moscow");
+    private static final DateTimeFormatter DATE_TIME =
+            DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm").withZone(SHOP_ZONE);
+
     private final NotificationProperties properties;
 
     public RenderedNotification welcome(UserRegisteredEvent event) {
-        String name = StringUtils.hasText(event.firstName()) ? event.firstName().trim() : "bạn";
+        String greeting = StringUtils.hasText(event.firstName())
+                ? "Здравствуйте, %s!".formatted(event.firstName().trim())
+                : "Здравствуйте!";
         String body = """
-                Chào %s,
+                %s
 
-                Cảm ơn bạn đã đăng ký tài khoản tại %s với địa chỉ e-mail %s.
-                Từ bây giờ bạn có thể đặt hàng, theo dõi đơn hàng và lưu sổ địa chỉ giao hàng.
+                Спасибо за регистрацию в магазине %s. Ваш аккаунт привязан к адресу %s.
+                Теперь вы можете оформлять заказы, следить за их статусом и сохранять адреса доставки.
 
-                %s""".formatted(name, shop(), event.email(), signature());
+                %s""".formatted(greeting, shop(), event.email(), signature());
         return new RenderedNotification(NotificationType.WELCOME, event.userId(), event.email(), null,
-                "[%s] Chào mừng bạn đến với %s".formatted(shop(), shop()), body);
+                "[%s] Добро пожаловать в %s".formatted(shop(), shop()), body);
+    }
+
+    /**
+     * The link opens the reset page of the storefront; the token is URL-encoded. The validity is the
+     * lifetime chosen by auth-service, rounded up to whole minutes.
+     */
+    public RenderedNotification passwordReset(PasswordResetRequestedEvent event) {
+        String link = "%s/reset-password?token=%s".formatted(properties.frontendUrl(),
+                URLEncoder.encode(event.token(), StandardCharsets.UTF_8));
+        String body = """
+                Здравствуйте!
+
+                Мы получили запрос на сброс пароля для аккаунта %s в магазине %s.
+                Чтобы задать новый пароль, перейдите по ссылке:
+
+                %s
+
+                Ссылка действительна %d мин. и может быть использована только один раз.
+                Если вы не запрашивали сброс пароля, просто проигнорируйте это письмо: ваш пароль останется прежним.
+
+                %s""".formatted(event.email(), shop(), link, validityMinutes(event), signature());
+        return new RenderedNotification(NotificationType.PASSWORD_RESET, event.userId(), event.email(), null,
+                "[%s] Сброс пароля".formatted(shop()), body);
     }
 
     public RenderedNotification orderPlaced(OrderCreatedEvent event) {
         String lines = event.items().stream()
-                .map(item -> "  - %s x %d: %s".formatted(item.productName(), item.quantity(),
+                .map(item -> "  - %s, %d шт. — %s".formatted(item.productName(), item.quantity(),
                         MoneyFormatter.format(lineTotal(item), event.currency())))
                 .collect(Collectors.joining("\n"));
+        long units = event.items().stream().mapToLong(OrderItemPayload::quantity).sum();
         String body = """
-                Chào bạn,
+                Здравствуйте!
 
-                %s đã nhận được đơn hàng %s của bạn:
+                Мы получили ваш заказ %s от %s. В заказе %s:
 
                 %s
 
-                Tổng thanh toán (đã gồm phí vận chuyển): %s
+                Итого к оплате с учётом доставки: %s
 
-                Chúng tôi đang giữ hàng và xử lý thanh toán. Bạn sẽ nhận được e-mail khi đơn hàng được xác nhận.
+                Мы резервируем товары и обрабатываем оплату. Когда заказ будет подтверждён, мы пришлём ещё одно письмо.
 
-                %s""".formatted(shop(), event.orderNumber(), lines,
+                %s""".formatted(event.orderNumber(), dateTime(event.occurredAt()),
+                RussianPlural.withCount(units, "товар", "товара", "товаров"), lines,
                 MoneyFormatter.format(event.totalAmount(), event.currency()), signature());
         return new RenderedNotification(NotificationType.ORDER_PLACED, event.userId(), event.userEmail(),
-                event.orderNumber(), "[%s] Đã nhận đơn hàng %s".formatted(shop(), event.orderNumber()), body);
+                event.orderNumber(), "[%s] Заказ %s оформлен".formatted(shop(), event.orderNumber()), body);
     }
 
     public RenderedNotification orderConfirmed(OrderConfirmedEvent event) {
         String body = """
-                Chào bạn,
+                Здравствуйте!
 
-                Thanh toán %s cho đơn hàng %s đã thành công. Đơn hàng đã được xác nhận và sẽ sớm được giao.
+                Оплата заказа %s на сумму %s прошла успешно (%s).
+                Заказ подтверждён, скоро мы передадим его в доставку.
 
-                %s""".formatted(MoneyFormatter.format(event.totalAmount(), event.currency()), event.orderNumber(),
-                signature());
+                %s""".formatted(event.orderNumber(), MoneyFormatter.format(event.totalAmount(), event.currency()),
+                dateTime(event.occurredAt()), signature());
         return new RenderedNotification(NotificationType.ORDER_CONFIRMED, event.userId(), event.userEmail(),
-                event.orderNumber(), "[%s] Đơn hàng %s đã được xác nhận".formatted(shop(), event.orderNumber()), body);
+                event.orderNumber(), "[%s] Заказ %s оплачен и подтверждён".formatted(shop(), event.orderNumber()),
+                body);
     }
 
     public RenderedNotification orderCancelled(OrderCancelledEvent event) {
-        String reason = StringUtils.hasText(event.reason()) ? event.reason() : "không rõ";
+        String reason = StringUtils.hasText(event.reason()) ? event.reason().trim() : "не указана";
         String body = """
-                Chào bạn,
+                Здравствуйте!
 
-                Đơn hàng %s đã bị huỷ.
-                Lý do: %s
+                Заказ %s отменён (%s).
+                Причина: %s
 
-                Nếu bạn đã thanh toán, số tiền sẽ được hoàn lại theo phương thức thanh toán ban đầu.
+                Если заказ был оплачен, деньги вернутся тем же способом, которым вы платили.
 
-                %s""".formatted(event.orderNumber(), reason, signature());
+                %s""".formatted(event.orderNumber(), dateTime(event.occurredAt()), reason, signature());
         return new RenderedNotification(NotificationType.ORDER_CANCELLED, event.userId(), event.userEmail(),
-                event.orderNumber(), "[%s] Đơn hàng %s đã bị huỷ".formatted(shop(), event.orderNumber()), body);
+                event.orderNumber(), "[%s] Заказ %s отменён".formatted(shop(), event.orderNumber()), body);
+    }
+
+    /**
+     * @return {@code dd.MM.yyyy HH:mm} in Moscow time
+     */
+    static String dateTime(Instant instant) {
+        return instant == null ? "—" : DATE_TIME.format(instant);
+    }
+
+    private static long validityMinutes(PasswordResetRequestedEvent event) {
+        long seconds = Duration.between(event.occurredAt(), event.expiresAt()).toSeconds();
+        return Math.max(1, (seconds + 59) / 60);
     }
 
     private static BigDecimal lineTotal(OrderItemPayload item) {
@@ -95,7 +148,7 @@ public class NotificationTemplates {
     }
 
     private String signature() {
-        return "Trân trọng,\n" + shop();
+        return "С уважением,\n" + shop();
     }
 
     /**

@@ -11,7 +11,7 @@ import {
 import { refreshTokens, type RefreshResult } from "@/lib/server/token-refresh";
 
 /** Pages that need a signed-in customer; /admin additionally needs ROLE_ADMIN. */
-const PROTECTED_PREFIXES = ["/cart", "/checkout", "/orders", "/account", "/admin"];
+const PROTECTED_PREFIXES = ["/cart", "/checkout", "/orders", "/payment", "/account", "/admin"];
 
 /**
  * Runs before every page and API route:

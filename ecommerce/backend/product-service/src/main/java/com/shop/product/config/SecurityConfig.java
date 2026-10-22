@@ -15,7 +15,9 @@ import org.springframework.security.web.SecurityFilterChain;
 
 /**
  * Catalogue browsing is public (an access token, when sent, is still verified and lets admins see
- * hidden products); every write requires {@code ROLE_ADMIN} via {@code @PreAuthorize}.
+ * hidden products), including product reviews and uploaded images under {@code /api/products}; every
+ * catalogue write requires {@code ROLE_ADMIN} via {@code @PreAuthorize}. Writing one's own review
+ * ({@code /api/reviews/**}) requires any authenticated user, review moderation {@code ROLE_ADMIN}.
  */
 @Configuration
 @EnableMethodSecurity
@@ -24,6 +26,10 @@ public class SecurityConfig {
     private static final String[] PUBLIC_GET_ENDPOINTS = {
             "/api/products/**",
             "/api/categories/**"
+    };
+
+    private static final String[] AUTHENTICATED_ENDPOINTS = {
+            "/api/reviews/**"
     };
 
     private static final String[] PUBLIC_ENDPOINTS = {
@@ -49,6 +55,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.GET, PUBLIC_GET_ENDPOINTS).permitAll()
                         .requestMatchers(PUBLIC_ENDPOINTS).permitAll()
+                        .requestMatchers(AUTHENTICATED_ENDPOINTS).authenticated()
                         .requestMatchers("/actuator/**").hasAuthority(RoleConstants.ROLE_ADMIN)
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2

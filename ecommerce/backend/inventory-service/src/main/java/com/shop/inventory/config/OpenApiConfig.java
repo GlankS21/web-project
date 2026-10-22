@@ -20,11 +20,11 @@ public class OpenApiConfig {
     public OpenAPI inventoryServiceOpenApi(@Value("${app.openapi.gateway-url:http://localhost:8080}") String gatewayUrl) {
         return new OpenAPI()
                 .info(new Info()
-                        .title("Inventory Service API")
+                        .title("API складского сервиса")
                         .version("v1")
-                        .description("Stock levels and movements (ROLE_ADMIN), public stock availability. "
-                                + "Stock reservations are driven by order events on RabbitMQ."))
-                .servers(List.of(new Server().url(gatewayUrl).description("API Gateway")))
+                        .description("Остатки и движение товара (ROLE_ADMIN), публичная информация о наличии. "
+                                + "Резервирование товара выполняется по событиям заказов из RabbitMQ."))
+                .servers(List.of(new Server().url(gatewayUrl).description("API-шлюз")))
                 .components(new Components().addSecuritySchemes(BEARER_SCHEME, new SecurityScheme()
                         .type(SecurityScheme.Type.HTTP)
                         .scheme("bearer")

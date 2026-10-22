@@ -1,14 +1,18 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { api } from "@/lib/client/api";
-import { errorMessage } from "@/lib/errors";
-import { PRODUCT_STATUS } from "@/lib/format";
+import { useErrorMessage } from "@/lib/client/use-error-message";
+import { PRODUCT_STATUS_TONE } from "@/lib/format";
 import type { ProductStatus } from "@/lib/types";
 
 /** Inline status switch of a product row; only ACTIVE products are visible to customers. */
 export function ProductStatusSelect({ productId, status }: { productId: number; status: ProductStatus }) {
+  const t = useTranslations("adminProducts");
+  const tStatus = useTranslations("productStatus");
+  const errorMessage = useErrorMessage();
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -33,11 +37,11 @@ export function ProductStatusSelect({ productId, status }: { productId: number; 
         disabled={saving}
         onChange={(event) => change(event.target.value as ProductStatus)}
         className="input w-auto py-1 text-xs"
-        aria-label="Trạng thái sản phẩm"
+        aria-label={t("statusLabel")}
       >
-        {(Object.keys(PRODUCT_STATUS) as ProductStatus[]).map((value) => (
+        {(Object.keys(PRODUCT_STATUS_TONE) as ProductStatus[]).map((value) => (
           <option key={value} value={value}>
-            {PRODUCT_STATUS[value].label}
+            {tStatus(value)}
           </option>
         ))}
       </select>

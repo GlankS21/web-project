@@ -107,10 +107,10 @@ class AddressRepositoryIntegrationTest {
         Address address = new Address();
         address.setUser(user);
         address.setRecipientName(recipient);
-        address.setPhoneNumber("+84901234567");
-        address.setAddressLine1("12 Nguyen Hue");
-        address.setCity("Ho Chi Minh City");
-        address.setCountryCode("VN");
+        address.setPhoneNumber("+79161234567");
+        address.setAddressLine1("ул. Тверская, д. 7");
+        address.setCity("Москва");
+        address.setCountryCode("RU");
         address.setDefaultAddress(isDefault);
         return address;
     }

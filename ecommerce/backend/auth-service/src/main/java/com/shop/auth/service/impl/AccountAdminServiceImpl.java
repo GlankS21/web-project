@@ -31,6 +31,9 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class AccountAdminServiceImpl implements AccountAdminService {
 
+    static final String CANNOT_REMOVE_OWN_ADMIN = "auth.error.cannot-remove-own-admin";
+    static final String CANNOT_DISABLE_OWN_ACCOUNT = "auth.error.cannot-disable-own-account";
+
     private final UserAccountRepository userAccountRepository;
     private final RoleRepository roleRepository;
     private final TokenService tokenService;
@@ -55,7 +58,7 @@ public class AccountAdminServiceImpl implements AccountAdminService {
     @Transactional
     public AccountResponse updateRoles(UUID actorId, UUID accountId, UpdateRolesRequest request) {
         if (actorId.equals(accountId) && !request.roles().contains(RoleName.ROLE_ADMIN)) {
-            throw new BusinessException("You cannot remove your own administrator role");
+            throw new BusinessException(CANNOT_REMOVE_OWN_ADMIN);
         }
         UserAccount account = findAccount(accountId);
         List<Role> roles = roleRepository.findByNameIn(request.roles());
@@ -73,7 +76,7 @@ public class AccountAdminServiceImpl implements AccountAdminService {
     public AccountResponse updateStatus(UUID actorId, UUID accountId, UpdateAccountStatusRequest request) {
         boolean enabled = request.enabled();
         if (actorId.equals(accountId) && !enabled) {
-            throw new BusinessException("You cannot disable your own account");
+            throw new BusinessException(CANNOT_DISABLE_OWN_ACCOUNT);
         }
         UserAccount account = findAccount(accountId);
         account.setEnabled(enabled);
@@ -87,6 +90,6 @@ public class AccountAdminServiceImpl implements AccountAdminService {
 
     private UserAccount findAccount(UUID accountId) {
         return userAccountRepository.findById(accountId)
-                .orElseThrow(() -> new ResourceNotFoundException("Account", "id", accountId));
+                .orElseThrow(() -> ResourceNotFoundException.of(AuthServiceImpl.ACCOUNT_NOT_FOUND));
     }
 }

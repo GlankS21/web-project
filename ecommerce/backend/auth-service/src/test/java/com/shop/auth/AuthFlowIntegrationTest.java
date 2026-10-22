@@ -3,6 +3,7 @@ package com.shop.auth;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.shop.common.constant.MessagingConstants;
+import com.shop.common.event.PasswordResetRequestedEvent;
 import com.shop.common.event.UserRegisteredEvent;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.core.AnonymousQueue;
@@ -26,6 +27,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.util.Map;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -35,7 +37,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * End-to-end flow through the HTTP API with real PostgreSQL and RabbitMQ:
- * register, authenticated call, refresh rotation, reuse detection and role enforcement.
+ * register, authenticated call, refresh rotation, reuse detection, role enforcement and password reset.
  */
 @SpringBootTest(properties = {
         "spring.cloud.config.enabled=false",
@@ -87,6 +89,7 @@ class AuthFlowIntegrationTest {
         String accessToken = registered.at("/data/accessToken").asText();
         String firstRefresh = registered.at("/data/refreshToken").asText();
         assertThat(registered.at("/data/account/email").asText()).isEqualTo("flow.user@example.com");
+        assertThat(registered.at("/message").asText()).isEqualTo("Аккаунт создан");
 
         UserRegisteredEvent event = rabbitTemplate.receiveAndConvert(probe.getName(), 10_000,
                 new ParameterizedTypeReference<UserRegisteredEvent>() {
@@ -104,7 +107,8 @@ class AuthFlowIntegrationTest {
         assertThat(secondRefresh).isNotEqualTo(firstRefresh);
 
         // Replaying the rotated token is treated as theft: it fails and kills the whole token family.
-        postJson("/api/auth/refresh", Map.of("refreshToken", firstRefresh), 401);
+        assertThat(postJson("/api/auth/refresh", Map.of("refreshToken", firstRefresh), 401)
+                .at("/message").asText()).isEqualTo("Сеанс был завершён, войдите снова");
         postJson("/api/auth/refresh", Map.of("refreshToken", secondRefresh), 401);
     }
 
@@ -141,6 +145,20 @@ class AuthFlowIntegrationTest {
 
         assertThat(body.at("/code").asText()).isEqualTo("VALIDATION_FAILED");
         assertThat(body.at("/violations").size()).isGreaterThanOrEqualTo(3);
+        assertThat(body.at("/message").asText()).isEqualTo("Проверьте правильность заполнения полей");
+    }
+
+    @Test
+    void passwordPolicyViolationIsExplainedInRussian() throws Exception {
+        JsonNode body = postJson("/api/auth/register", Map.of(
+                "email", "ivan.petrov@example.ru",
+                "password", "onlyletters",
+                "firstName", "Иван",
+                "lastName", "Петров"), 400);
+
+        assertThat(body.at("/violations/0/field").asText()).isEqualTo("password");
+        assertThat(body.at("/violations/0/message").asText())
+                .isEqualTo("Пароль должен содержать хотя бы одну букву и одну цифру");
     }
 
     @Test
@@ -148,7 +166,59 @@ class AuthFlowIntegrationTest {
         JsonNode body = postJson("/api/auth/login",
                 Map.of("email", "admin@shop.local", "password", "WrongPass1"), 401);
 
-        assertThat(body.at("/message").asText()).isEqualTo("Invalid email or password");
+        assertThat(body.at("/message").asText()).isEqualTo("Неверный e-mail или пароль");
+    }
+
+    @Test
+    void forgottenPasswordIsResetWithTheEmailedToken() throws Exception {
+        // Exclusive but not auto-delete: the probe is consumed twice
+        Queue probe = new Queue("auth-test.password-reset." + UUID.randomUUID(), false, true, false);
+        rabbitAdmin.declareQueue(probe);
+        rabbitAdmin.declareBinding(BindingBuilder.bind(probe).to(userExchange)
+                .with(MessagingConstants.USER_PASSWORD_RESET_REQUESTED_KEY));
+        String refreshToken = postJson("/api/auth/register", Map.of(
+                "email", "forgetful@example.com",
+                "password", "Secret123",
+                "firstName", "For",
+                "lastName", "Getful"), 201)
+                .at("/data/refreshToken").asText();
+
+        // Unknown and known e-mails get the same answer; only the known one produces an e-mail.
+        String unknownMessage = postJson("/api/auth/password/forgot",
+                Map.of("email", "nobody@example.com"), 200).at("/message").asText();
+        String knownMessage = postJson("/api/auth/password/forgot",
+                Map.of("email", "Forgetful@Example.com"), 200).at("/message").asText();
+        assertThat(knownMessage).isEqualTo(unknownMessage)
+                .isEqualTo("Если аккаунт с таким e-mail существует, мы отправили на него ссылку для сброса пароля");
+
+        PasswordResetRequestedEvent event = rabbitTemplate.receiveAndConvert(probe.getName(), 10_000,
+                new ParameterizedTypeReference<PasswordResetRequestedEvent>() {
+                });
+        assertThat(event).isNotNull();
+        assertThat(event.email()).isEqualTo("forgetful@example.com");
+        assertThat(event.expiresAt()).isAfter(event.occurredAt());
+        String resetToken = event.token();
+
+        // A second request within the cooldown is answered the same way but sends nothing.
+        postJson("/api/auth/password/forgot", Map.of("email", "forgetful@example.com"), 200);
+        assertThat(rabbitTemplate.receive(probe.getName(), 1_000)).isNull();
+
+        postJson("/api/auth/password/reset", Map.of("token", resetToken, "newPassword", "short"), 400);
+        JsonNode reset = postJson("/api/auth/password/reset",
+                Map.of("token", resetToken, "newPassword", "NewSecret456"), 200);
+        assertThat(reset.at("/message").asText()).isEqualTo("Пароль изменён, войдите с новым паролем");
+
+        postJson("/api/auth/login", Map.of("email", "forgetful@example.com", "password", "Secret123"), 401);
+        postJson("/api/auth/login", Map.of("email", "forgetful@example.com", "password", "NewSecret456"), 200);
+        // Sessions opened with the old password are revoked.
+        postJson("/api/auth/refresh", Map.of("refreshToken", refreshToken), 401);
+
+        JsonNode reused = postJson("/api/auth/password/reset",
+                Map.of("token", resetToken, "newPassword", "Another789"), 400);
+        assertThat(reused.at("/code").asText()).isEqualTo("BAD_REQUEST");
+        assertThat(reused.at("/message").asText())
+                .isEqualTo("Ссылка для сброса пароля недействительна или устарела. Запросите новую");
+        postJson("/api/auth/password/reset", Map.of("token", "not-a-token", "newPassword", "Another789"), 400);
     }
 
     private JsonNode postJson(String path, Map<String, String> body, int expectedStatus) throws Exception {

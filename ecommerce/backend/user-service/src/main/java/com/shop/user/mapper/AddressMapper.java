@@ -11,6 +11,7 @@ import java.util.List;
 
 /**
  * The default flag and the owner are managed by the service, never copied from the request.
+ * An address sent without a country is in Russia ({@link Address#DEFAULT_COUNTRY_CODE}).
  */
 @Mapper
 public interface AddressMapper {
@@ -25,6 +26,7 @@ public interface AddressMapper {
     @Mapping(target = "version", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
+    @Mapping(target = "countryCode", defaultValue = Address.DEFAULT_COUNTRY_CODE)
     Address toEntity(AddressRequest request);
 
     @Mapping(target = "id", ignore = true)
@@ -33,5 +35,6 @@ public interface AddressMapper {
     @Mapping(target = "version", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
+    @Mapping(target = "countryCode", defaultValue = Address.DEFAULT_COUNTRY_CODE)
     void updateFromRequest(AddressRequest request, @MappingTarget Address address);
 }

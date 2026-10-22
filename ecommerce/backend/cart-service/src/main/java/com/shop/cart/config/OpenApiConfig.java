@@ -21,11 +21,11 @@ public class OpenApiConfig {
     public OpenAPI cartServiceOpenApi(@Value("${app.openapi.gateway-url:http://localhost:8080}") String gatewayUrl) {
         return new OpenAPI()
                 .info(new Info()
-                        .title("Cart Service API")
+                        .title("API сервиса корзины")
                         .version("v1")
-                        .description("Shopping cart of the authenticated customer, priced with the current "
-                                + "catalogue prices and checked against the available stock."))
-                .servers(List.of(new Server().url(gatewayUrl).description("API Gateway")))
+                        .description("Корзина текущего покупателя: цены берутся из каталога, "
+                                + "количество проверяется по наличию на складе."))
+                .servers(List.of(new Server().url(gatewayUrl).description("API-шлюз")))
                 .components(new Components().addSecuritySchemes(BEARER_SCHEME, new SecurityScheme()
                         .type(SecurityScheme.Type.HTTP)
                         .scheme("bearer")

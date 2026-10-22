@@ -1,5 +1,6 @@
 package com.shop.inventory.service.impl;
 
+import com.shop.common.autoconfigure.CommonMessagesAutoConfiguration;
 import com.shop.common.constant.MessagingConstants;
 import com.shop.common.event.OrderCancelledEvent;
 import com.shop.common.event.OrderConfirmedEvent;
@@ -64,7 +65,8 @@ class StockReservationServiceImplTest {
     @BeforeEach
     void setUp() {
         service = new StockReservationServiceImpl(reservationRepository, inventoryItemRepository,
-                stockMovementRepository, outboxService, new InventoryMapperImpl(), Clock.fixed(NOW, ZoneOffset.UTC));
+                stockMovementRepository, outboxService, new InventoryMapperImpl(), Clock.fixed(NOW, ZoneOffset.UTC),
+                new CommonMessagesAutoConfiguration().messageSource());
     }
 
     @Test
@@ -100,9 +102,10 @@ class StockReservationServiceImplTest {
         StockReservation saved = savedReservation();
         assertThat(saved.getStatus()).isEqualTo(ReservationStatus.FAILED);
         assertThat(saved.getFailureReason())
-                .contains("product 2 (requested 2, available 1)")
-                .contains("product 3 (requested 1, available 0)")
-                .doesNotContain("product 1 ");
+                .startsWith("Недостаточно товара на складе: ")
+                .contains("товар 2 (заказано 2 шт., в наличии 1 шт.)")
+                .contains("товар 3 (заказано 1 шт., в наличии 0 шт.)")
+                .doesNotContain("товар 1 ");
         verify(stockMovementRepository, never()).save(any());
 
         ArgumentCaptor<StockReservationFailedEvent> event = ArgumentCaptor.forClass(StockReservationFailedEvent.class);
@@ -116,7 +119,9 @@ class StockReservationServiceImplTest {
     void reserve_failsMalformedOrderWithoutTouchingStock() {
         service.reserve(orderCreated(line(1L, 0)));
 
-        assertThat(savedReservation().getStatus()).isEqualTo(ReservationStatus.FAILED);
+        StockReservation saved = savedReservation();
+        assertThat(saved.getStatus()).isEqualTo(ReservationStatus.FAILED);
+        assertThat(saved.getFailureReason()).isEqualTo("В заказе есть некорректная позиция");
         verify(inventoryItemRepository, never()).findAllForUpdate(any());
         verify(outboxService).enqueue(anyString(), eq(MessagingConstants.STOCK_RESERVATION_FAILED_KEY), any(), any());
     }
@@ -171,6 +176,32 @@ class StockReservationServiceImplTest {
     }
 
     @Test
+    void release_ofPaidOrderPutsTheSoldUnitsBackOnce() {
+        StockReservation reservation = reservation(ReservationStatus.COMMITTED, 1L, 3);
+        InventoryItem phone = item(1L, 7, 0);
+        when(reservationRepository.findByOrderIdForUpdate(orderId)).thenReturn(Optional.of(reservation));
+        when(inventoryItemRepository.findAllForUpdate(Set.of(1L))).thenReturn(List.of(phone));
+
+        service.release(orderCancelled());
+
+        assertThat(phone.getQuantityOnHand()).isEqualTo(10);
+        assertThat(phone.getQuantityReserved()).isZero();
+        assertThat(reservation.getStatus()).isEqualTo(ReservationStatus.RETURNED);
+        ArgumentCaptor<StockMovement> movement = ArgumentCaptor.forClass(StockMovement.class);
+        verify(stockMovementRepository).save(movement.capture());
+        assertThat(movement.getValue().getType()).isEqualTo(MovementType.RETURN);
+        assertThat(movement.getValue().getOnHandChange()).isEqualTo(3);
+        assertThat(movement.getValue().getReservedChange()).isZero();
+        verify(outboxService).enqueue(eq(MessagingConstants.INVENTORY_EXCHANGE), eq(MessagingConstants.STOCK_RELEASED_KEY),
+                any(StockReleasedEvent.class), eq(orderId));
+
+        // Redelivery: already returned
+        service.release(orderCancelled());
+        assertThat(phone.getQuantityOnHand()).isEqualTo(10);
+        verify(stockMovementRepository, times(1)).save(any());
+    }
+
+    @Test
     void release_ofFailedReservationDoesNothing() {
         when(reservationRepository.findByOrderIdForUpdate(orderId))
                 .thenReturn(Optional.of(reservation(ReservationStatus.FAILED, 1L, 3)));
@@ -190,6 +221,8 @@ class StockReservationServiceImplTest {
         assertThat(marker.getStatus()).isEqualTo(ReservationStatus.RELEASED);
         assertThat(marker.getOrderId()).isEqualTo(orderId);
         assertThat(marker.getItems()).isEmpty();
+        assertThat(marker.getFailureReason())
+                .isEqualTo("Заказ отменён до резервирования товара: Оплата не прошла");
         verifyNoInteractions(outboxService);
     }
 
@@ -224,16 +257,16 @@ class StockReservationServiceImplTest {
 
     private OrderCreatedEvent orderCreated(OrderItemPayload... lines) {
         return new OrderCreatedEvent(UUID.randomUUID(), NOW, orderId, "ORD-1", UUID.randomUUID(), "jane@example.com",
-                List.of(lines), BigDecimal.TEN, "VND");
+                List.of(lines), BigDecimal.TEN, "RUB");
     }
 
     private OrderConfirmedEvent orderConfirmed() {
         return new OrderConfirmedEvent(UUID.randomUUID(), NOW, orderId, "ORD-1", UUID.randomUUID(),
-                "jane@example.com", BigDecimal.TEN, "VND");
+                "jane@example.com", BigDecimal.TEN, "RUB");
     }
 
     private OrderCancelledEvent orderCancelled() {
         return new OrderCancelledEvent(UUID.randomUUID(), NOW, orderId, "ORD-1", UUID.randomUUID(),
-                "jane@example.com", "Payment declined");
+                "jane@example.com", "Оплата не прошла");
     }
 }

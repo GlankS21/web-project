@@ -1,31 +1,21 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { Alert, Button, Field } from "@/components/ui";
 import { api } from "@/lib/client/api";
-import { ApiError, errorMessage } from "@/lib/errors";
-
-const PASSWORD_HINT = "8–72 ký tự, có ít nhất một chữ cái và một chữ số.";
-
-/** auth-service answers 400 both for a wrong current password and for an unchanged one. */
-function describe(error: unknown): string {
-  if (error instanceof ApiError && error.status === 400 && error.violations.length === 0) {
-    if (/incorrect/i.test(error.message)) {
-      return "Mật khẩu hiện tại không đúng.";
-    }
-    if (/different/i.test(error.message)) {
-      return "Mật khẩu mới phải khác mật khẩu hiện tại.";
-    }
-  }
-  return errorMessage(error);
-}
+import { useErrorMessage } from "@/lib/client/use-error-message";
+import { ApiError } from "@/lib/errors";
 
 /**
  * auth-service revokes every session after a password change, so the user is signed out here and
  * asked to sign in with the new password.
  */
 export function PasswordForm() {
+  const t = useTranslations("password");
+  const tAuth = useTranslations("auth");
+  const errorMessage = useErrorMessage();
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -36,7 +26,7 @@ export function PasswordForm() {
     const currentPassword = String(form.get("currentPassword") ?? "");
     const newPassword = String(form.get("newPassword") ?? "");
     if (newPassword !== String(form.get("confirmPassword") ?? "")) {
-      setError("Mật khẩu nhập lại không khớp.");
+      setError(tAuth("passwordMismatch"));
       return;
     }
     setSaving(true);
@@ -52,18 +42,34 @@ export function PasswordForm() {
     }
   };
 
-  const message = typeof error === "string" ? error : error ? describe(error) : null;
+  // A wrong current password and an unchanged one are 400 answers whose message explains the problem
+  const message =
+    typeof error === "string"
+      ? error
+      : error instanceof ApiError && error.status === 400 && error.violations.length === 0
+        ? error.message
+        : error
+          ? errorMessage(error)
+          : null;
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-4">
       {message && <Alert tone="danger">{message}</Alert>}
-      <Field label="Mật khẩu hiện tại" htmlFor="currentPassword" required>
-        <input id="currentPassword" name="currentPassword" type="password" required maxLength={72} autoComplete="current-password" className="input" />
+      <Field label={t("current")} htmlFor="currentPassword" required>
+        <input
+          id="currentPassword"
+          name="currentPassword"
+          type="password"
+          required
+          maxLength={72}
+          autoComplete="current-password"
+          className="input"
+        />
       </Field>
       <Field
-        label="Mật khẩu mới"
+        label={tAuth("newPassword")}
         htmlFor="newPassword"
-        hint={PASSWORD_HINT}
+        hint={tAuth("passwordHint")}
         error={error instanceof ApiError ? error.fieldError("newPassword") : undefined}
         required
       >
@@ -75,18 +81,26 @@ export function PasswordForm() {
           minLength={8}
           maxLength={72}
           pattern="(?=.*[A-Za-z])(?=.*\d).{8,72}"
-          title={PASSWORD_HINT}
+          title={tAuth("passwordHint")}
           autoComplete="new-password"
           className="input"
         />
       </Field>
-      <Field label="Nhập lại mật khẩu mới" htmlFor="confirmPassword" required>
-        <input id="confirmPassword" name="confirmPassword" type="password" required maxLength={72} autoComplete="new-password" className="input" />
+      <Field label={t("confirm")} htmlFor="confirmPassword" required>
+        <input
+          id="confirmPassword"
+          name="confirmPassword"
+          type="password"
+          required
+          maxLength={72}
+          autoComplete="new-password"
+          className="input"
+        />
       </Field>
-      <p className="text-xs text-slate-500">Sau khi đổi mật khẩu, mọi phiên đăng nhập sẽ kết thúc và bạn cần đăng nhập lại.</p>
+      <p className="text-xs text-slate-500">{t("signOutNotice")}</p>
       <div>
         <Button type="submit" loading={saving}>
-          Đổi mật khẩu
+          {t("submit")}
         </Button>
       </div>
     </form>

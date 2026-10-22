@@ -17,7 +17,7 @@ public class ProductClientFallbackFactory implements FallbackFactory<ProductClie
     public ProductClient create(Throwable cause) {
         return ids -> {
             log.warn("product-service call failed: {}", cause.toString());
-            throw new ServiceUnavailableException("The product catalogue is temporarily unavailable, please retry", cause);
+            throw new ServiceUnavailableException("order.error.catalogue-unavailable", cause);
         };
     }
 }

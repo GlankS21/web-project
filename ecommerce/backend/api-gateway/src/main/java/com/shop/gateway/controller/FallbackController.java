@@ -26,6 +26,8 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class FallbackController {
 
+    static final String SERVICE_UNAVAILABLE_KEY = "gateway.error.service-unavailable";
+
     private final ErrorResponseWriter errorResponseWriter;
 
     @RequestMapping("/{service}")
@@ -36,7 +38,7 @@ public class FallbackController {
                 cause != null ? cause.toString() : "circuit open");
 
         ErrorResponse body = errorResponseWriter.build(exchange, ErrorCode.SERVICE_UNAVAILABLE,
-                "%s is temporarily unavailable, please try again later".formatted(service));
+                SERVICE_UNAVAILABLE_KEY, service);
         body.setPath(originalPath(exchange));
         return Mono.just(ResponseEntity.status(body.getStatus()).body(body));
     }

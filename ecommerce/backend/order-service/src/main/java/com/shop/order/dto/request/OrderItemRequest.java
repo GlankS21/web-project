@@ -10,11 +10,11 @@ import jakarta.validation.constraints.Positive;
  */
 public record OrderItemRequest(
 
-        @Schema(example = "7")
+        @Schema(description = "Идентификатор товара", example = "7")
         @NotNull @Positive
         Long productId,
 
-        @Schema(description = "Lines of the same product are summed; the total per product is capped (default 99)",
+        @Schema(description = "Строки одного товара суммируются; общее количество одного товара ограничено (по умолчанию 99)",
                 example = "1")
         @NotNull @Min(1)
         Integer quantity

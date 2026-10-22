@@ -1,16 +1,19 @@
 import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
 import { CategoryManager } from "@/components/admin/CategoryManager";
 import { PageTitle } from "@/components/ui";
 import { apiGet } from "@/lib/server/data";
 import type { Category } from "@/lib/types";
 
-export const metadata: Metadata = { title: "Danh mục" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getTranslations("adminCategories"))("title") };
+}
 
 export default async function AdminCategoriesPage() {
-  const categories = await apiGet<Category[]>("/api/categories");
+  const [categories, t] = await Promise.all([apiGet<Category[]>("/api/categories"), getTranslations("adminCategories")]);
   return (
     <>
-      <PageTitle>Danh mục</PageTitle>
+      <PageTitle>{t("title")}</PageTitle>
       <CategoryManager categories={categories} />
     </>
   );

@@ -27,7 +27,9 @@ public class SecurityConfig {
             "/api/auth/register",
             "/api/auth/login",
             "/api/auth/refresh",
-            "/api/auth/logout"
+            "/api/auth/logout",
+            "/api/auth/password/forgot",
+            "/api/auth/password/reset"
     };
 
     private static final String[] PUBLIC_ENDPOINTS = {

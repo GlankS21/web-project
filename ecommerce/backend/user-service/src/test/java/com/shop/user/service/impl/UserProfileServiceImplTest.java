@@ -69,10 +69,10 @@ class UserProfileServiceImplTest {
         when(userProfileRepository.saveAndFlush(existing)).thenReturn(existing);
 
         UserProfileResponse response = service.updateProfile(userId, "jane@example.com",
-                new UpdateProfileRequest("Jane", "Doe", "+84901234567", LocalDate.of(1995, 4, 20)));
+                new UpdateProfileRequest("Jane", "Doe", "+79161234567", LocalDate.of(1995, 4, 20)));
 
         assertThat(response.firstName()).isEqualTo("Jane");
-        assertThat(response.phoneNumber()).isEqualTo("+84901234567");
+        assertThat(response.phoneNumber()).isEqualTo("+79161234567");
         assertThat(response.email()).isEqualTo("jane@example.com");
         assertThat(existing.getId()).isEqualTo(userId);
     }

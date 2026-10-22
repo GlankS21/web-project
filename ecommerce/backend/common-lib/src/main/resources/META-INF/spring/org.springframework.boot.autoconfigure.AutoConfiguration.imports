@@ -1,3 +1,5 @@
+com.shop.common.autoconfigure.CommonMessagesAutoConfiguration
+com.shop.common.autoconfigure.CommonLocaleAutoConfiguration
 com.shop.common.autoconfigure.CorrelationIdServletAutoConfiguration
 com.shop.common.autoconfigure.CorrelationIdFeignAutoConfiguration
 com.shop.common.autoconfigure.CommonAmqpAutoConfiguration

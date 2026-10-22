@@ -11,19 +11,19 @@ import java.time.LocalDate;
 
 public record UpdateProfileRequest(
 
-        @Schema(example = "John")
+        @Schema(description = "Имя", example = "Иван")
         @NotBlank @Size(max = 100)
         String firstName,
 
-        @Schema(example = "Doe")
+        @Schema(description = "Фамилия", example = "Петров")
         @NotBlank @Size(max = 100)
         String lastName,
 
-        @Schema(example = "+84901234567")
+        @Schema(description = "Телефон в формате +7XXXXXXXXXX", example = "+79161234567")
         @Pattern(regexp = ValidationPatterns.PHONE, message = ValidationPatterns.PHONE_MESSAGE)
         String phoneNumber,
 
-        @Schema(example = "1995-04-20")
+        @Schema(description = "Дата рождения", example = "1995-04-20")
         @Past
         LocalDate dateOfBirth
 ) {

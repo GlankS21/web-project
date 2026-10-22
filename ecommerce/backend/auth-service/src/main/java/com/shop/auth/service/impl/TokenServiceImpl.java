@@ -24,6 +24,10 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class TokenServiceImpl implements TokenService {
 
+    static final String REFRESH_TOKEN_INVALID = "auth.error.refresh-token-invalid";
+    static final String REFRESH_TOKEN_REVOKED = "auth.error.refresh-token-revoked";
+    static final String REFRESH_TOKEN_EXPIRED = "auth.error.refresh-token-expired";
+
     private final RefreshTokenRepository refreshTokenRepository;
     private final JwtTokenProvider jwtTokenProvider;
     private final OpaqueTokenGenerator opaqueTokenGenerator;
@@ -45,7 +49,7 @@ public class TokenServiceImpl implements TokenService {
     public IssuedTokens rotate(String refreshToken) {
         RefreshToken current = refreshTokenRepository
                 .findByTokenHashForUpdate(TokenHashUtils.sha256Hex(refreshToken))
-                .orElseThrow(() -> new UnauthorizedException("Refresh token is invalid"));
+                .orElseThrow(() -> new UnauthorizedException(REFRESH_TOKEN_INVALID));
         Instant now = clock.instant();
         UserAccount account = current.getUserAccount();
 
@@ -53,14 +57,14 @@ public class TokenServiceImpl implements TokenService {
             int revoked = refreshTokenRepository.revokeAllActiveByUserAccountId(account.getId(), now);
             log.warn("Reuse of revoked refresh token {} for account {}; revoked {} active session(s)",
                     current.getId(), account.getId(), revoked);
-            throw new UnauthorizedException("Refresh token has been revoked, please log in again");
+            throw new UnauthorizedException(REFRESH_TOKEN_REVOKED);
         }
         if (current.isExpired(now)) {
-            throw new UnauthorizedException("Refresh token has expired, please log in again");
+            throw new UnauthorizedException(REFRESH_TOKEN_EXPIRED);
         }
         if (!account.isEnabled()) {
             current.revoke(now);
-            throw new UnauthorizedException("Account is disabled");
+            throw new UnauthorizedException(AuthServiceImpl.ACCOUNT_DISABLED);
         }
         return issue(account, now, current);
     }

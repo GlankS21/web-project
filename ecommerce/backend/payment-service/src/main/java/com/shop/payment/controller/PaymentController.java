@@ -16,13 +16,15 @@ import org.springframework.data.web.PageableDefault;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.UUID;
 
-@Tag(name = "Payments", description = "Payments are created by the order saga; this API only reads them")
+@Tag(name = "Платежи", description = "Платежи создаются сагой заказа; покупатель подтверждает онлайн-оплату "
+        + "на странице платёжного сервиса и после отказа может оплатить заказ повторно")
 @RestController
 @RequestMapping("/api/payments")
 @RequiredArgsConstructor
@@ -30,14 +32,33 @@ public class PaymentController {
 
     private final PaymentService paymentService;
 
-    @Operation(summary = "Payment of an order",
-            description = "Customers can only read the payment of their own orders; administrators can read any.")
+    @Operation(summary = "Платёж по заказу",
+            description = "С токеном виджета текущей попытки (confirmationToken), пока платёж в статусе PENDING, "
+                    + "и историей попыток и возвратов. Покупатель видит только платежи своих заказов, "
+                    + "администратор — любые.")
     @GetMapping("/orders/{orderId}")
     public ApiResponse<PaymentResponse> ofOrder(@PathVariable("orderId") UUID orderId) {
         return ApiResponse.success(paymentService.getPaymentOfOrder(orderId, SecurityUtils.currentUser()));
     }
 
-    @Operation(summary = "All payments, newest first (admin only)")
+    @Operation(summary = "Оплатить повторно",
+            description = "Начинает новую попытку после отклонённой или прерванной онлайн-оплаты и возвращает её "
+                    + "confirmationToken, например чтобы оплатить другой картой. Пока попытка ещё не завершена, "
+                    + "она возвращается без изменений. Только владелец заказа и только пока заказ ожидает оплаты.")
+    @PostMapping("/orders/{orderId}/retry")
+    public ApiResponse<PaymentResponse> retry(@PathVariable("orderId") UUID orderId) {
+        return ApiResponse.success(paymentService.retryPayment(orderId, SecurityUtils.currentUser()));
+    }
+
+    @Operation(summary = "Обновить данные у платёжного сервиса",
+            description = "Запрашивает у платёжного сервиса состояние незавершённых попыток и возвратов, например "
+                    + "когда виджет сообщил об окончании оплаты раньше, чем пришло уведомление.")
+    @PostMapping("/orders/{orderId}/refresh")
+    public ApiResponse<PaymentResponse> refresh(@PathVariable("orderId") UUID orderId) {
+        return ApiResponse.success(paymentService.refreshPayment(orderId, SecurityUtils.currentUser()));
+    }
+
+    @Operation(summary = "Все платежи, сначала новые (только для администратора)")
     @PreAuthorize("hasRole('ADMIN')")
     @GetMapping
     public ApiResponse<PageResponse<PaymentResponse>> search(

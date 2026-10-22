@@ -31,6 +31,8 @@ app:
       enabled: ${MAIL_ENABLED:true}
       from: ${MAIL_FROM:no-reply@shop.local}
     shop-name: ${SHOP_NAME:TechShop}
+    # Base URL of the storefront used in e-mail links (password reset)
+    frontend-url: ${FRONTEND_URL:http://localhost:3000}
     retry:
       max-attempts: 5
       interval: 1m

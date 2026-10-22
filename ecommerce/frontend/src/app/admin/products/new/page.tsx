@@ -1,21 +1,24 @@
 import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
 import Link from "next/link";
 import { ProductForm } from "@/components/admin/ProductForm";
 import { PageTitle } from "@/components/ui";
 import { apiGet } from "@/lib/server/data";
 import type { Category } from "@/lib/types";
 
-export const metadata: Metadata = { title: "Thêm sản phẩm" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getTranslations("adminProducts"))("new") };
+}
 
 export default async function NewProductPage() {
-  const categories = await apiGet<Category[]>("/api/categories");
+  const [categories, t] = await Promise.all([apiGet<Category[]>("/api/categories"), getTranslations("adminProducts")]);
   return (
     <>
       <Link href="/admin/products" className="link text-sm">
-        ← Sản phẩm
+        {t("back")}
       </Link>
       <div className="mt-3">
-        <PageTitle>Thêm sản phẩm</PageTitle>
+        <PageTitle>{t("new")}</PageTitle>
       </div>
       <ProductForm categories={categories} />
     </>

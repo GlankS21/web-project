@@ -3,7 +3,8 @@ package com.shop.common.exception;
 import lombok.Getter;
 
 /**
- * Platform-wide error codes and the HTTP status each one maps to.
+ * Platform-wide error codes and the HTTP status each one maps to. The English default message is
+ * used for logs; responses carry the localized message of {@link #messageKeyOf(ErrorCode)}.
  */
 @Getter
 public enum ErrorCode {
@@ -28,5 +29,12 @@ public enum ErrorCode {
     ErrorCode(int httpStatus, String defaultMessage) {
         this.httpStatus = httpStatus;
         this.defaultMessage = defaultMessage;
+    }
+
+    /**
+     * Key of the localized default message in {@code common-messages_ru.properties}.
+     */
+    public static String messageKeyOf(ErrorCode code) {
+        return "error." + code.name();
     }
 }

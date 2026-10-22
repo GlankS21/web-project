@@ -1,14 +1,17 @@
 package com.shop.order.entity;
 
+import org.springframework.context.MessageSourceResolvable;
+import org.springframework.context.support.DefaultMessageSourceResolvable;
+
 import java.util.Set;
 
 /**
  * Life cycle of an order.
  * <pre>
  * PENDING ──stock.reserved──► AWAITING_PAYMENT ──payment.succeeded──► PAID ──► SHIPPED ──► DELIVERED
- *    │                              │
- *    └── stock.reservation-failed,  └── payment.failed, customer cancellation, expiry ──► CANCELLED
- *        customer cancellation, expiry
+ *    │                              │                                      │
+ *    └── stock.reservation-failed,  └── payment.failed, cancellation,      └── cancellation (stock returned,
+ *        cancellation, expiry           expiry ──► CANCELLED                   payment refunded) ──► CANCELLED
  * </pre>
  */
 public enum OrderStatus {
@@ -26,7 +29,7 @@ public enum OrderStatus {
 
     DELIVERED,
 
-    /** Final: stock released, any captured payment refunded. */
+    /** Final: stock released or returned, any captured payment refunded. */
     CANCELLED;
 
     public boolean canTransitionTo(OrderStatus target) {
@@ -34,7 +37,7 @@ public enum OrderStatus {
     }
 
     /**
-     * An order can be cancelled until it is paid. After payment it follows the delivery flow.
+     * An order can be cancelled until it is shipped; a paid order is refunded.
      */
     public boolean isCancellable() {
         return canTransitionTo(CANCELLED);
@@ -47,11 +50,19 @@ public enum OrderStatus {
         return this == PENDING || this == AWAITING_PAYMENT;
     }
 
+    /**
+     * Russian name of the status ({@code order.status.<STATUS>} of {@code messages_ru.properties}), to be
+     * passed as a message argument.
+     */
+    public MessageSourceResolvable label() {
+        return new DefaultMessageSourceResolvable(new String[]{"order.status." + name()}, name());
+    }
+
     private Set<OrderStatus> allowedTargets() {
         return switch (this) {
             case PENDING -> Set.of(AWAITING_PAYMENT, CANCELLED);
             case AWAITING_PAYMENT -> Set.of(PAID, CANCELLED);
-            case PAID -> Set.of(SHIPPED);
+            case PAID -> Set.of(SHIPPED, CANCELLED);
             case SHIPPED -> Set.of(DELIVERED);
             case DELIVERED, CANCELLED -> Set.of();
         };

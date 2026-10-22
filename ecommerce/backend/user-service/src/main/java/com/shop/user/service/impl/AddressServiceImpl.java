@@ -10,6 +10,7 @@ import com.shop.user.repository.AddressRepository;
 import com.shop.user.repository.UserProfileRepository;
 import com.shop.user.service.AddressService;
 import com.shop.user.service.UserProfileService;
+import com.shop.user.util.RussianPlural;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,6 +21,9 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class AddressServiceImpl implements AddressService {
+
+    static final String ADDRESS_NOT_FOUND = "address.error.not-found";
+    static final String ADDRESS_LIMIT_REACHED = "address.error.limit-reached";
 
     private final AddressRepository addressRepository;
     private final UserProfileRepository userProfileRepository;
@@ -44,7 +48,8 @@ public class AddressServiceImpl implements AddressService {
         userProfileService.getOrCreateProfile(userId, email);
         long existing = addressRepository.countByUserId(userId);
         if (existing >= MAX_ADDRESSES_PER_USER) {
-            throw new BusinessException("An address book can hold at most %d addresses".formatted(MAX_ADDRESSES_PER_USER));
+            throw new BusinessException(ADDRESS_LIMIT_REACHED, MAX_ADDRESSES_PER_USER,
+                    RussianPlural.category(MAX_ADDRESSES_PER_USER));
         }
 
         Address address = addressMapper.toEntity(request);
@@ -98,6 +103,6 @@ public class AddressServiceImpl implements AddressService {
 
     private Address findOwned(UUID userId, UUID addressId) {
         return addressRepository.findByIdAndUserId(addressId, userId)
-                .orElseThrow(() -> new ResourceNotFoundException("Address", "id", addressId));
+                .orElseThrow(() -> ResourceNotFoundException.of(ADDRESS_NOT_FOUND));
     }
 }

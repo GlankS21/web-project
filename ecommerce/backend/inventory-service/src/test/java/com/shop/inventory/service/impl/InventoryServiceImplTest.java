@@ -1,5 +1,6 @@
 package com.shop.inventory.service.impl;
 
+import com.shop.common.autoconfigure.CommonMessagesAutoConfiguration;
 import com.shop.common.event.ProductCreatedEvent;
 import com.shop.common.exception.BadRequestException;
 import com.shop.common.exception.BusinessException;
@@ -47,7 +48,7 @@ class InventoryServiceImplTest {
     @BeforeEach
     void setUp() {
         service = new InventoryServiceImpl(inventoryItemRepository, stockMovementRepository, new InventoryMapperImpl(),
-                new InventoryProperties(7, null));
+                new InventoryProperties(7, null), new CommonMessagesAutoConfiguration().messageSource());
     }
 
     @Test
@@ -84,11 +85,13 @@ class InventoryServiceImplTest {
     @Test
     void adjustStock_rejectsZeroAndRemovingReservedUnits() {
         assertThatThrownBy(() -> service.adjustStock(1L, new StockAdjustmentRequest(0, "noop"), adminId))
-                .isInstanceOf(BadRequestException.class);
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("inventory.error.zero-change");
 
         when(inventoryItemRepository.findForUpdate(1L)).thenReturn(Optional.of(item(1L, 10, 8)));
         assertThatThrownBy(() -> service.adjustStock(1L, new StockAdjustmentRequest(-3, "Damaged"), adminId))
-                .isInstanceOf(BusinessException.class);
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("inventory.error.below-reserved");
         verify(stockMovementRepository, never()).save(any());
     }
 
@@ -105,7 +108,7 @@ class InventoryServiceImplTest {
         ArgumentCaptor<StockMovement> movement = ArgumentCaptor.forClass(StockMovement.class);
         verify(stockMovementRepository).save(movement.capture());
         assertThat(movement.getValue().getOnHandChange()).isEqualTo(-3);
-        assertThat(movement.getValue().getReason()).isEqualTo("Stock count");
+        assertThat(movement.getValue().getReason()).isEqualTo("Инвентаризация");
     }
 
     @Test

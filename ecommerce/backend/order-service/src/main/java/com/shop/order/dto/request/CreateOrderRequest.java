@@ -11,19 +11,24 @@ import java.util.List;
 
 public record CreateOrderRequest(
 
-        @Schema(description = "Usually the content of the cart. The ordered quantities are then removed from the cart.")
+        @Schema(description = "Обычно содержимое корзины; заказанные количества затем удаляются из корзины.")
         @NotEmpty @Size(max = 100)
         List<@NotNull @Valid OrderItemRequest> items,
 
+        @Schema(description = "Адрес доставки")
         @NotNull @Valid
         ShippingAddressRequest shippingAddress,
 
-        @Schema(example = "CARD")
+        @Schema(description = "Способ оплаты", example = "ONLINE")
         @NotNull
         PaymentMethod paymentMethod,
 
-        @Schema(example = "Please call before delivery")
+        @Schema(description = "Комментарий к заказу", example = "Позвоните, пожалуйста, перед доставкой")
         @Size(max = 500)
-        String note
+        String note,
+
+        @Schema(description = "Промокод (необязательно), регистр не учитывается; пусто — без промокода", example = "WELCOME10")
+        @Size(max = 30)
+        String couponCode
 ) {
 }

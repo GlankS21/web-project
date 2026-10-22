@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-@Tag(name = "Notifications", description = "E-mails sent to the authenticated customer")
+@Tag(name = "Уведомления", description = "Письма, отправленные текущему покупателю")
 @RestController
 @RequestMapping("/api/notifications")
 @RequiredArgsConstructor
@@ -24,7 +24,7 @@ public class NotificationController {
 
     private final NotificationService notificationService;
 
-    @Operation(summary = "My notifications, newest first")
+    @Operation(summary = "Мои уведомления, сначала новые")
     @GetMapping
     public ApiResponse<PageResponse<NotificationResponse>> mine(
             @ParameterObject

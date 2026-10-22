@@ -7,11 +7,11 @@ import jakarta.validation.constraints.Positive;
 
 public record AddCartItemRequest(
 
-        @Schema(example = "7")
+        @Schema(description = "Идентификатор товара", example = "7")
         @NotNull @Positive
         Long productId,
 
-        @Schema(description = "Added to the quantity already in the cart", example = "1")
+        @Schema(description = "Сколько штук добавить к количеству, уже лежащему в корзине", example = "1")
         @NotNull @Min(1)
         Integer quantity
 ) {

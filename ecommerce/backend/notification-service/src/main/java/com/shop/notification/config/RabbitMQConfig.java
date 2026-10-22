@@ -47,7 +47,8 @@ public class RabbitMQConfig {
     @Bean
     public Declarables userEventsQueue() {
         return consumerQueue(MessagingConstants.NOTIFICATION_USER_EVENTS_QUEUE, userExchange(),
-                MessagingConstants.USER_REGISTERED_KEY);
+                MessagingConstants.USER_REGISTERED_KEY,
+                MessagingConstants.USER_PASSWORD_RESET_REQUESTED_KEY);
     }
 
     private Declarables consumerQueue(String name, TopicExchange exchange, String... routingKeys) {

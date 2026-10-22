@@ -63,7 +63,8 @@ class AuthServiceImplTest {
     private ApplicationEventPublisher eventPublisher;
 
     private final PasswordEncoder passwordEncoder = spy(new BCryptPasswordEncoder(4));
-    private final AuthProperties authProperties = new AuthProperties(Duration.ofMinutes(15), Duration.ofDays(7));
+    private final AuthProperties authProperties = new AuthProperties(Duration.ofMinutes(15), Duration.ofDays(7),
+            Duration.ofMinutes(30), Duration.ofMinutes(1));
 
     private AuthServiceImpl authService;
 
@@ -139,7 +140,7 @@ class AuthServiceImplTest {
 
         assertThatThrownBy(() -> authService.login(new LoginRequest("john@example.com", "Wrong1234")))
                 .isInstanceOf(UnauthorizedException.class)
-                .hasMessage("Invalid email or password");
+                .hasMessage(AuthServiceImpl.INVALID_CREDENTIALS);
         verify(tokenService, never()).issueTokens(any());
     }
 
@@ -149,7 +150,7 @@ class AuthServiceImplTest {
 
         assertThatThrownBy(() -> authService.login(new LoginRequest("ghost@example.com", "Secret123")))
                 .isInstanceOf(UnauthorizedException.class)
-                .hasMessage("Invalid email or password");
+                .hasMessage(AuthServiceImpl.INVALID_CREDENTIALS);
         verify(passwordEncoder).matches(eq("Secret123"), anyString());
     }
 

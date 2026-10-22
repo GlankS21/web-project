@@ -70,8 +70,7 @@ public class RateLimitWebFilter implements WebFilter, Ordered {
                 exchange.getRequest().getPath().value());
         long retryAfterSeconds = Math.max(1, policy.refillPeriod().toSeconds() / policy.refillTokens());
         exchange.getResponse().getHeaders().set(HttpHeaders.RETRY_AFTER, String.valueOf(retryAfterSeconds));
-        return errorResponseWriter.write(exchange, ErrorCode.TOO_MANY_REQUESTS,
-                "Too many requests, please retry later");
+        return errorResponseWriter.write(exchange, ErrorCode.TOO_MANY_REQUESTS);
     }
 
     @Override

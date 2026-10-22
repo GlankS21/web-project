@@ -1,5 +1,6 @@
 package com.shop.product.controller;
 
+import com.shop.common.autoconfigure.CommonMessagesAutoConfiguration;
 import com.shop.common.dto.ApiResponse;
 import com.shop.common.dto.PageResponse;
 import com.shop.common.security.SecurityUtils;
@@ -17,6 +18,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.MessageSource;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -38,27 +40,29 @@ import org.springframework.web.bind.annotation.RestController;
 import java.math.BigDecimal;
 import java.util.List;
 
-@Tag(name = "Products", description = "Catalogue browsing (public) and product management (ROLE_ADMIN). "
-        + "Customers see ACTIVE products only; administrators also see DRAFT and ARCHIVED ones.")
+@Tag(name = "Товары", description = "Просмотр каталога (доступен всем) и управление товарами (ROLE_ADMIN). "
+        + "Покупатели видят только товары в статусе ACTIVE, администраторы — также DRAFT и ARCHIVED.")
 @RestController
 @RequestMapping("/api/products")
 @RequiredArgsConstructor
 public class ProductController {
 
     private final ProductService productService;
+    private final MessageSource messageSource;
 
-    @Operation(summary = "Search the catalogue",
-            description = "Sortable by price, name, createdAt, updatedAt, sku. Example: sort=price,asc")
+    @Operation(summary = "Поиск по каталогу",
+            description = "Сортировка по полям price, name, createdAt, updatedAt, sku, ratingAverage. "
+                    + "Пример: sort=price,asc")
     @GetMapping
     public ApiResponse<PageResponse<ProductSummaryResponse>> search(
-            @Parameter(description = "Part of the name, SKU or brand")
+            @Parameter(description = "Часть названия, артикула или бренда")
             @RequestParam(name = "keyword", required = false) String keyword,
-            @Parameter(description = "Category id; a root category includes its sub-categories")
+            @Parameter(description = "Идентификатор категории; корневая категория включает свои подкатегории")
             @RequestParam(name = "categoryId", required = false) Long categoryId,
             @RequestParam(name = "brand", required = false) String brand,
             @RequestParam(name = "minPrice", required = false) BigDecimal minPrice,
             @RequestParam(name = "maxPrice", required = false) BigDecimal maxPrice,
-            @Parameter(description = "Administrators only; ignored for other callers")
+            @Parameter(description = "Только для администраторов; для остальных пользователей не учитывается")
             @RequestParam(name = "status", required = false) ProductStatus status,
             @ParameterObject
             @PageableDefault(sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
@@ -66,58 +70,63 @@ public class ProductController {
         return ApiResponse.success(productService.searchProducts(criteria, pageable, SecurityUtils.currentUserIsAdmin()));
     }
 
-    @Operation(summary = "Get several products by id (at most 100)",
-            description = "Returned in the requested order; unknown or unavailable ids are left out.")
+    @Operation(summary = "Несколько товаров по идентификаторам (не более 100)",
+            description = "Товары возвращаются в порядке запроса; неизвестные и недоступные "
+                    + "идентификаторы пропускаются.")
     @GetMapping("/by-ids")
     public ApiResponse<List<ProductSummaryResponse>> getByIds(@RequestParam(name = "ids") List<Long> ids) {
         return ApiResponse.success(productService.getProductsByIds(ids, SecurityUtils.currentUserIsAdmin()));
     }
 
-    @Operation(summary = "Get a product")
+    @Operation(summary = "Товар по идентификатору")
     @GetMapping("/{productId}")
     public ApiResponse<ProductResponse> get(@PathVariable("productId") Long productId) {
         return ApiResponse.success(productService.getProduct(productId, SecurityUtils.currentUserIsAdmin()));
     }
 
-    @Operation(summary = "Get a product by slug")
+    @Operation(summary = "Товар по адресу (slug)")
     @GetMapping("/slug/{slug}")
     public ApiResponse<ProductResponse> getBySlug(@PathVariable("slug") String slug) {
         return ApiResponse.success(productService.getProductBySlug(slug, SecurityUtils.currentUserIsAdmin()));
     }
 
-    @Operation(summary = "Create a product (DRAFT unless a status is given)",
+    @Operation(summary = "Создать товар (в статусе DRAFT, если статус не указан)",
             security = @SecurityRequirement(name = OpenApiConfig.BEARER_SCHEME))
     @PreAuthorize("hasRole('ADMIN')")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<ProductResponse> create(@Valid @RequestBody ProductRequest request) {
-        return ApiResponse.success("Product created", productService.createProduct(request));
+        return ApiResponse.success(message("product.created"), productService.createProduct(request));
     }
 
-    @Operation(summary = "Update a product (the SKU cannot change; omitted images are kept)",
+    @Operation(summary = "Изменить товар (артикул не меняется; если изображения не переданы, они сохраняются)",
             security = @SecurityRequirement(name = OpenApiConfig.BEARER_SCHEME))
     @PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/{productId}")
     public ApiResponse<ProductResponse> update(@PathVariable("productId") Long productId,
                                                @Valid @RequestBody ProductRequest request) {
-        return ApiResponse.success("Product updated", productService.updateProduct(productId, request));
+        return ApiResponse.success(message("product.updated"), productService.updateProduct(productId, request));
     }
 
-    @Operation(summary = "Publish, unpublish or archive a product",
+    @Operation(summary = "Опубликовать, снять с публикации или перенести товар в архив",
             security = @SecurityRequirement(name = OpenApiConfig.BEARER_SCHEME))
     @PreAuthorize("hasRole('ADMIN')")
     @PatchMapping("/{productId}/status")
     public ApiResponse<ProductResponse> changeStatus(@PathVariable("productId") Long productId,
                                                      @Valid @RequestBody ProductStatusRequest request) {
-        return ApiResponse.success("Product status updated", productService.changeStatus(productId, request.status()));
+        return ApiResponse.success(message("product.status-updated"), productService.changeStatus(productId, request.status()));
     }
 
-    @Operation(summary = "Archive a product (soft delete: past orders keep referring to it)",
+    @Operation(summary = "Перенести товар в архив (мягкое удаление: прошлые заказы по-прежнему ссылаются на него)",
             security = @SecurityRequirement(name = OpenApiConfig.BEARER_SCHEME))
     @PreAuthorize("hasRole('ADMIN')")
     @DeleteMapping("/{productId}")
     public ApiResponse<Void> archive(@PathVariable("productId") Long productId) {
         productService.changeStatus(productId, ProductStatus.ARCHIVED);
-        return ApiResponse.message("Product archived");
+        return ApiResponse.message(message("product.archived"));
+    }
+
+    private String message(String key) {
+        return messageSource.getMessage(key, null, CommonMessagesAutoConfiguration.DEFAULT_LOCALE);
     }
 }

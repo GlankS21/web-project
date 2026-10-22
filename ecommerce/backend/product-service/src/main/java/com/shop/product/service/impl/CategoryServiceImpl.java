@@ -56,7 +56,7 @@ public class CategoryServiceImpl implements CategoryService {
     @Transactional(readOnly = true)
     public CategoryResponse getCategoryBySlug(String slug) {
         return toDetailResponse(categoryRepository.findBySlug(slug)
-                .orElseThrow(() -> new ResourceNotFoundException("Category", "slug", slug)));
+                .orElseThrow(() -> ResourceNotFoundException.of("category.error.not-found")));
     }
 
     @Override
@@ -64,7 +64,7 @@ public class CategoryServiceImpl implements CategoryService {
     public CategoryResponse createCategory(CategoryRequest request) {
         String slug = request.slug() != null ? request.slug() : deriveSlug(request.name());
         if (categoryRepository.existsBySlug(slug)) {
-            throw new ConflictException("A category with slug '%s' already exists".formatted(slug));
+            throw new ConflictException("category.error.slug-taken", slug);
         }
 
         Category category = new Category();
@@ -82,7 +82,7 @@ public class CategoryServiceImpl implements CategoryService {
         // Keep existing URLs stable: the slug changes only when explicitly requested
         if (request.slug() != null && !request.slug().equals(category.getSlug())) {
             if (categoryRepository.existsBySlugAndIdNot(request.slug(), categoryId)) {
-                throw new ConflictException("A category with slug '%s' already exists".formatted(request.slug()));
+                throw new ConflictException("category.error.slug-taken", request.slug());
             }
             category.setSlug(request.slug());
         }
@@ -99,10 +99,10 @@ public class CategoryServiceImpl implements CategoryService {
     public void deleteCategory(Long categoryId) {
         Category category = findCategory(categoryId);
         if (categoryRepository.existsByParentId(categoryId)) {
-            throw new BusinessException("Category has sub-categories; delete or move them first");
+            throw new BusinessException("category.error.has-children");
         }
         if (productRepository.existsByCategoryId(categoryId)) {
-            throw new BusinessException("Category still contains products; move them to another category first");
+            throw new BusinessException("category.error.has-products");
         }
         categoryRepository.delete(category);
     }
@@ -116,15 +116,15 @@ public class CategoryServiceImpl implements CategoryService {
             return null;
         }
         if (category != null && Objects.equals(parentId, category.getId())) {
-            throw new BadRequestException("A category cannot be its own parent");
+            throw new BadRequestException("category.error.own-parent");
         }
         Category parent = categoryRepository.findById(parentId)
-                .orElseThrow(() -> new BadRequestException("Parent category %d does not exist".formatted(parentId)));
+                .orElseThrow(() -> new BadRequestException("category.error.parent-not-found", String.valueOf(parentId)));
         if (!parent.isRoot()) {
-            throw new BusinessException("Categories can be nested only one level deep");
+            throw new BusinessException("category.error.too-deep");
         }
         if (category != null && categoryRepository.existsByParentId(category.getId())) {
-            throw new BusinessException("A category with sub-categories cannot be moved under another category");
+            throw new BusinessException("category.error.parent-has-children");
         }
         return parent;
     }
@@ -132,7 +132,7 @@ public class CategoryServiceImpl implements CategoryService {
     private String deriveSlug(String name) {
         String slug = SlugUtils.slugify(name, SLUG_MAX_LENGTH);
         if (slug.isEmpty()) {
-            throw new BadRequestException("Cannot derive a slug from the name, please provide one");
+            throw new BadRequestException("category.error.slug-not-derivable");
         }
         return slug;
     }
@@ -148,6 +148,6 @@ public class CategoryServiceImpl implements CategoryService {
 
     private Category findCategory(Long categoryId) {
         return categoryRepository.findById(categoryId)
-                .orElseThrow(() -> new ResourceNotFoundException("Category", "id", categoryId));
+                .orElseThrow(() -> ResourceNotFoundException.of("category.error.not-found"));
     }
 }

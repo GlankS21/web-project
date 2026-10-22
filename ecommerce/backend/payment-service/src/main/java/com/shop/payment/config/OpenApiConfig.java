@@ -21,11 +21,12 @@ public class OpenApiConfig {
     public OpenAPI paymentServiceOpenApi(@Value("${app.openapi.gateway-url:http://localhost:8080}") String gatewayUrl) {
         return new OpenAPI()
                 .info(new Info()
-                        .title("Payment Service API")
+                        .title("API платёжного сервиса")
                         .version("v1")
-                        .description("Payments of orders (read only). Payments are created by the order saga "
-                                + "through RabbitMQ and processed by a simulated payment gateway."))
-                .servers(List.of(new Server().url(gatewayUrl).description("API Gateway")))
+                        .description("Оплата заказов. Платежи создаются сагой заказа через RabbitMQ и проводятся "
+                                + "через ЮKassa (или её локальную имитацию при PAYMENT_PROVIDER=mock); результат "
+                                + "приходит вебхуком, через страницу возврата или при сверке."))
+                .servers(List.of(new Server().url(gatewayUrl).description("API-шлюз")))
                 .components(new Components().addSecuritySchemes(BEARER_SCHEME, new SecurityScheme()
                         .type(SecurityScheme.Type.HTTP)
                         .scheme("bearer")

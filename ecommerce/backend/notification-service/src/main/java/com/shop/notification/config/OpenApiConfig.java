@@ -22,11 +22,12 @@ public class OpenApiConfig {
             @Value("${app.openapi.gateway-url:http://localhost:8080}") String gatewayUrl) {
         return new OpenAPI()
                 .info(new Info()
-                        .title("Notification Service API")
+                        .title("API сервиса уведомлений")
                         .version("v1")
-                        .description("E-mails sent on registration and on order events (placed, confirmed, "
-                                + "cancelled). Customers read their own; administrators read all and resend."))
-                .servers(List.of(new Server().url(gatewayUrl).description("API Gateway")))
+                        .description("Письма, отправляемые при регистрации, сбросе пароля и событиях заказа "
+                                + "(оформлен, оплачен, отменён). Покупатель видит свои письма, администратор — "
+                                + "все и может отправить письмо повторно."))
+                .servers(List.of(new Server().url(gatewayUrl).description("API-шлюз")))
                 .components(new Components().addSecuritySchemes(BEARER_SCHEME, new SecurityScheme()
                         .type(SecurityScheme.Type.HTTP)
                         .scheme("bearer")

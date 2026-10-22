@@ -16,23 +16,27 @@ import java.util.List;
 
 public record ProductRequest(
 
-        @Schema(description = "Immutable after creation: an update must send the current SKU", example = "PHN-IP15-128")
+        @Schema(description = "Артикул; после создания не меняется, при изменении товара передаётся текущий",
+                example = "PHN-IP15-128")
         @NotBlank
         @Pattern(regexp = ValidationPatterns.SKU, message = ValidationPatterns.SKU_MESSAGE)
         String sku,
 
-        @Schema(example = "iPhone 15 128GB")
+        @Schema(example = "Смартфон Apple iPhone 15 128 ГБ")
         @NotBlank @Size(max = 200)
         String name,
 
-        @Schema(description = "Generated from the name when omitted", example = "iphone-15-128gb")
+        @Schema(description = "Если не указан, составляется из названия транслитерацией",
+                example = "smartfon-apple-iphone-15-128-gb")
         @Size(max = 220)
         @Pattern(regexp = ValidationPatterns.SLUG, message = ValidationPatterns.SLUG_MESSAGE)
         String slug,
 
+        @Schema(example = "Чип A16 Bionic, камера 48 Мп, Dynamic Island")
         @Size(max = 500)
         String shortDescription,
 
+        @Schema(example = "Дисплей Super Retina XDR 6,1 дюйма, разъём USB-C, аккумулятора хватает на весь день.")
         @Size(max = 10_000)
         String description,
 
@@ -40,13 +44,13 @@ public record ProductRequest(
         @Size(max = 100)
         String brand,
 
-        @Schema(example = "19990000")
+        @Schema(description = "Цена в рублях", example = "66690")
         @NotNull
         @DecimalMin(value = "0", inclusive = false)
         @Digits(integer = 12, fraction = 2)
         BigDecimal price,
 
-        @Schema(description = "Previous price shown struck through; must be greater than price", example = "22990000")
+        @Schema(description = "Старая цена, показывается зачёркнутой; должна быть больше цены", example = "76690")
         @DecimalMin(value = "0", inclusive = false)
         @Digits(integer = 12, fraction = 2)
         BigDecimal compareAtPrice,
@@ -55,10 +59,11 @@ public record ProductRequest(
         @NotNull
         Long categoryId,
 
-        @Schema(description = "Defaults to DRAFT on creation; unchanged on update when omitted")
+        @Schema(description = "При создании по умолчанию DRAFT; при изменении, если не указан, не меняется")
         ProductStatus status,
 
-        @Schema(description = "Ordered list, the first image is the thumbnail. Replaces all images on update.")
+        @Schema(description = "Упорядоченный список, первое изображение — миниатюра. При изменении товара "
+                + "заменяет все изображения.")
         @Size(max = 10)
         List<@Valid @NotNull ProductImageRequest> images
 ) {

@@ -22,35 +22,47 @@ export class ApiError extends Error {
   }
 }
 
+/** Keys of the "errors" messages; see {@link describeError}. */
+export type ErrorMessageKey =
+  | "network"
+  | "invalidFields"
+  | "badRequest"
+  | "unauthorized"
+  | "forbidden"
+  | "notFound"
+  | "tooManyRequests"
+  | "unavailable"
+  | "unexpected";
+
+/** The translator of the "errors" namespace, e.g. useTranslations("errors"). */
+export type ErrorTranslator = (key: ErrorMessageKey, values?: { detail: string }) => string;
+
 /**
- * Message shown to the user. Business-rule messages (422, 409) come from the services and are
- * specific ("Only 3 unit(s) of ... are available"); they are shown as they are. Other statuses get
- * a generic Vietnamese explanation.
+ * Translated message shown to the user. Business-rule messages (409, 422) are already localized by
+ * the services and are shown as they are.
  */
-export function errorMessage(error: unknown): string {
+export function describeError(error: unknown, t: ErrorTranslator): string {
   if (!(error instanceof ApiError)) {
-    return "Không kết nối được tới máy chủ. Vui lòng thử lại.";
+    return t("network");
   }
   switch (error.status) {
     case 400:
-      return error.violations.length > 0
-        ? "Vui lòng kiểm tra lại các trường được đánh dấu."
-        : `Yêu cầu không hợp lệ: ${error.message}`;
+      return error.violations.length > 0 ? t("invalidFields") : t("badRequest", { detail: error.message });
     case 401:
-      return "Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.";
+      return t("unauthorized");
     case 403:
-      return "Bạn không có quyền thực hiện thao tác này.";
+      return t("forbidden");
     case 404:
-      return "Không tìm thấy dữ liệu yêu cầu.";
+      return t("notFound");
     case 409:
     case 422:
       return error.message;
     case 429:
-      return "Bạn thao tác quá nhanh, vui lòng thử lại sau ít phút.";
+      return t("tooManyRequests");
     case 503:
     case 504:
-      return "Dịch vụ tạm thời gián đoạn, vui lòng thử lại sau.";
+      return t("unavailable");
     default:
-      return "Đã có lỗi xảy ra, vui lòng thử lại.";
+      return t("unexpected");
   }
 }

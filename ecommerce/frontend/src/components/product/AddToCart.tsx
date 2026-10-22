@@ -1,17 +1,20 @@
 "use client";
 
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { useCart, useSession } from "@/components/providers";
 import { Alert, Button } from "@/components/ui";
 import { api } from "@/lib/client/api";
-import { errorMessage } from "@/lib/errors";
+import { useErrorMessage } from "@/lib/client/use-error-message";
 
 const MAX_PER_LINE = 99;
 
 /** @param available units that can be ordered, null when unknown */
 export function AddToCart({ productId, available }: { productId: number; available: number | null }) {
+  const t = useTranslations("addToCart");
+  const errorMessage = useErrorMessage();
   const session = useSession();
   const { refresh } = useCart();
   const router = useRouter();
@@ -44,7 +47,7 @@ export function AddToCart({ productId, available }: { productId: number; availab
   };
 
   if (soldOut) {
-    return <Alert tone="warning">Sản phẩm tạm hết hàng.</Alert>;
+    return <Alert tone="warning">{t("soldOut")}</Alert>;
   }
 
   return (
@@ -56,7 +59,7 @@ export function AddToCart({ productId, available }: { productId: number; availab
             className="px-3 py-2 text-lg text-slate-600 hover:bg-slate-50 disabled:text-slate-300"
             onClick={() => setQuantity((value) => Math.max(1, value - 1))}
             disabled={quantity <= 1}
-            aria-label="Giảm số lượng"
+            aria-label={t("decrease")}
           >
             −
           </button>
@@ -70,30 +73,30 @@ export function AddToCart({ productId, available }: { productId: number; availab
               setQuantity(Number.isFinite(value) ? Math.min(max, Math.max(1, value)) : 1);
             }}
             className="w-14 border-x border-slate-300 py-2 text-center text-sm focus:outline-none"
-            aria-label="Số lượng"
+            aria-label={t("quantity")}
           />
           <button
             type="button"
             className="px-3 py-2 text-lg text-slate-600 hover:bg-slate-50 disabled:text-slate-300"
             onClick={() => setQuantity((value) => Math.min(max, value + 1))}
             disabled={quantity >= max}
-            aria-label="Tăng số lượng"
+            aria-label={t("increase")}
           >
             +
           </button>
         </div>
         <Button size="lg" onClick={() => add(false)} loading={state.kind === "saving"}>
-          Thêm vào giỏ
+          {t("add")}
         </Button>
         <Button size="lg" variant="secondary" onClick={() => add(true)} disabled={state.kind === "saving"}>
-          Mua ngay
+          {t("buyNow")}
         </Button>
       </div>
       {state.kind === "added" && (
         <Alert tone="success">
-          Đã thêm vào giỏ hàng.{" "}
+          {t("added")}{" "}
           <Link href="/cart" className="font-medium underline">
-            Xem giỏ hàng
+            {t("viewCart")}
           </Link>
         </Alert>
       )}

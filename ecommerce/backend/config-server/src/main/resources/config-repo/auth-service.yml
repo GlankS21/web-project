@@ -17,3 +17,7 @@ app:
     access-token-ttl: ${JWT_ACCESS_TOKEN_TTL:15m}
     refresh-token-ttl: ${JWT_REFRESH_TOKEN_TTL:7d}
     refresh-token-cleanup-cron: "0 0 3 * * *"
+    # "Forgot password": validity of the e-mailed link and minimum delay between two e-mails per account
+    password-reset-ttl: ${PASSWORD_RESET_TTL:30m}
+    password-reset-cooldown: ${PASSWORD_RESET_COOLDOWN:1m}
+    password-reset-token-cleanup-cron: "0 30 3 * * *"

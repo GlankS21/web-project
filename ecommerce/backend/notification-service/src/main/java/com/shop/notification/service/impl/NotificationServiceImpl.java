@@ -103,12 +103,12 @@ public class NotificationServiceImpl implements NotificationService {
     @Override
     public NotificationResponse resend(UUID notificationId) {
         if (!notificationRepository.existsById(notificationId)) {
-            throw new ResourceNotFoundException("Notification", "id", notificationId);
+            throw ResourceNotFoundException.of("notification.error.not-found");
         }
         deliver(notificationId);
         return notificationRepository.findById(notificationId)
                 .map(notificationMapper::toResponse)
-                .orElseThrow(() -> new ResourceNotFoundException("Notification", "id", notificationId));
+                .orElseThrow(() -> ResourceNotFoundException.of("notification.error.not-found"));
     }
 
     /**

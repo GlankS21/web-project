@@ -9,11 +9,12 @@ import jakarta.validation.constraints.Size;
 
 public record StockAdjustmentRequest(
 
-        @Schema(description = "Units added (goods received) or removed (damaged, lost); must not be 0", example = "20")
+        @Schema(description = "Сколько единиц добавить (поступление) или списать (брак, потеря); не может быть 0",
+                example = "20")
         @NotNull @Min(-1_000_000) @Max(1_000_000)
         Integer quantityChange,
 
-        @Schema(example = "Received purchase order PO-2026-001")
+        @Schema(description = "Причина корректировки", example = "Поступление по заказу поставщику PO-2026-001")
         @NotBlank @Size(max = 255)
         String reason
 ) {

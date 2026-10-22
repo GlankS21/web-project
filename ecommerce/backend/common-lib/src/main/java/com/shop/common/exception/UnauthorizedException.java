@@ -9,7 +9,7 @@ public class UnauthorizedException extends BaseException {
         super(ErrorCode.UNAUTHORIZED);
     }
 
-    public UnauthorizedException(String message) {
-        super(ErrorCode.UNAUTHORIZED, message);
+    public UnauthorizedException(String message, Object... args) {
+        super(ErrorCode.UNAUTHORIZED, message, args);
     }
 }

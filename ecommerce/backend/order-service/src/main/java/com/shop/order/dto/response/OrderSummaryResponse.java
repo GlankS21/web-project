@@ -17,6 +17,8 @@ public record OrderSummaryResponse(
         String userEmail,
         OrderStatus status,
         PaymentMethod paymentMethod,
+        String couponCode,
+        BigDecimal discountAmount,
         BigDecimal totalAmount,
         String currency,
         int itemCount,

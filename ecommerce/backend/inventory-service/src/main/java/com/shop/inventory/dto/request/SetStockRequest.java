@@ -8,15 +8,16 @@ import jakarta.validation.constraints.Size;
 
 public record SetStockRequest(
 
-        @Schema(description = "Counted physical stock; cannot be lower than the reserved quantity", example = "42")
+        @Schema(description = "Фактический остаток по итогам пересчёта; не может быть меньше зарезервированного количества",
+                example = "42")
         @NotNull @Min(0) @Max(1_000_000)
         Integer quantityOnHand,
 
-        @Schema(description = "Unchanged when omitted", example = "5")
+        @Schema(description = "Порог «мало на складе»; если не указан, не меняется", example = "5")
         @Min(0) @Max(1_000_000)
         Integer lowStockThreshold,
 
-        @Schema(example = "Stock count 2026-10")
+        @Schema(description = "Причина; по умолчанию «Инвентаризация»", example = "Инвентаризация, октябрь 2026")
         @Size(max = 255)
         String reason
 ) {

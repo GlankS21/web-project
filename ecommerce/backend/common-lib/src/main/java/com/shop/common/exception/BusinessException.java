@@ -5,7 +5,10 @@ package com.shop.common.exception;
  */
 public class BusinessException extends BaseException {
 
-    public BusinessException(String message) {
-        super(ErrorCode.BUSINESS_RULE_VIOLATION, message);
+    /**
+     * @param message key of the message (or literal text) and its arguments
+     */
+    public BusinessException(String message, Object... args) {
+        super(ErrorCode.BUSINESS_RULE_VIOLATION, message, args);
     }
 }

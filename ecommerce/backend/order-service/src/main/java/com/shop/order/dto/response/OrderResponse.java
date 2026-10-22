@@ -17,6 +17,8 @@ public record OrderResponse(
         PaymentMethod paymentMethod,
         BigDecimal subtotal,
         BigDecimal shippingFee,
+        String couponCode,
+        BigDecimal discountAmount,
         BigDecimal totalAmount,
         String currency,
         ShippingAddressResponse shippingAddress,
@@ -31,6 +33,8 @@ public record OrderResponse(
         Instant paidAt,
         Instant shippedAt,
         Instant deliveredAt,
-        Instant cancelledAt
+        Instant cancelledAt,
+        String refundTransactionId,
+        Instant refundedAt
 ) {
 }

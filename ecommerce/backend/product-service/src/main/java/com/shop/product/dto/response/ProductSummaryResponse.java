@@ -20,6 +20,8 @@ public record ProductSummaryResponse(
         String thumbnailUrl,
         Long categoryId,
         String categoryName,
-        ProductStatus status
+        ProductStatus status,
+        BigDecimal ratingAverage,
+        int ratingCount
 ) {
 }

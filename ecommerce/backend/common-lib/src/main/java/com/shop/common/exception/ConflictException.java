@@ -5,7 +5,10 @@ package com.shop.common.exception;
  */
 public class ConflictException extends BaseException {
 
-    public ConflictException(String message) {
-        super(ErrorCode.CONFLICT, message);
+    /**
+     * @param message key of the message (or literal text) and its arguments
+     */
+    public ConflictException(String message, Object... args) {
+        super(ErrorCode.CONFLICT, message, args);
     }
 }
