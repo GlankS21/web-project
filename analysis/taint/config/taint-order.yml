@@ -18,9 +18,7 @@ sources:
   - { kind: param, method: "<com.shop.order.controller.AdminCouponController: com.shop.common.dto.ApiResponse update(java.lang.Long,com.shop.order.dto.request.CouponRequest)>", index: 1 }
   # AMQP listeners (saga replies from inventory-service / payment-service)
   - { kind: param, method: "<com.shop.order.messaging.consumer.SagaReplyConsumer: void on*(*)>", index: 0 }
-
-  # request DTOs are only built by deserialising the HTTP body, so every scalar field of a
-  # nested DTO (e.g. CreateOrderRequest.items[*].productId) is attacker-controlled
+  # request-DTO field sources are generated (scripts/mk_dto_fields.py)
 
 sinks:
   # outgoing HTTP channel (OpenFeign)
