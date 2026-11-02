@@ -2,13 +2,14 @@
 # Builds work/ for the given services: the JRE model, the extracted application and library
 # classes, and the generated taint configs (coarse -> field-level -> database channel).
 # usage: prepare.sh <service>...        e.g. prepare.sh cart-service order-service inventory-service
-# env: JAVA_HOME (JDK 24 whose modules form the JRE model), ECOMMERCE (backend dir with built jars)
+# env: JAVA_HOME (JDK 24 whose modules form the JRE model), ECOMMERCE (backend dir with built jars),
+#      VKR_WORK (work dir, default work/; keep it out of synced folders such as OneDrive)
 set -e
 T=$(cd "$(dirname "$0")/.." && pwd)
 JAVA_HOME=${JAVA_HOME:-"C:/Program Files/Java/jdk-24"}
 ECOMMERCE=${ECOMMERCE:-"$T/../../ecommerce/backend"}
 export JAVA_HOME
-K="$T/work"
+K=${VKR_WORK:-"$T/work"}
 mkdir -p "$K"
 
 # JRE model: JDK classes downgraded to class version 61 for Micans' ASM 9.4, packed where Tai-e
