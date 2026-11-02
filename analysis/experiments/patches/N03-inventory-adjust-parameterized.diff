@@ -1,0 +1,28 @@
+diff --git a/backend/inventory-service/src/main/java/com/shop/inventory/service/impl/InventoryServiceImpl.java b/backend/inventory-service/src/main/java/com/shop/inventory/service/impl/InventoryServiceImpl.java
+index 50cc832..e79410f 100644
+--- a/backend/inventory-service/src/main/java/com/shop/inventory/service/impl/InventoryServiceImpl.java
++++ b/backend/inventory-service/src/main/java/com/shop/inventory/service/impl/InventoryServiceImpl.java
+@@ -24,6 +24,7 @@ import lombok.extern.slf4j.Slf4j;
+ import org.springframework.context.MessageSource;
+ import org.springframework.data.domain.Page;
+ import org.springframework.data.domain.Pageable;
++import org.springframework.jdbc.core.JdbcTemplate;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+@@ -46,6 +47,7 @@ public class InventoryServiceImpl implements InventoryService {
+     private final InventoryProperties properties;
+     private final MessageSource messageSource;
+     private final StockLevelNotifier stockLevelNotifier;
++    private final JdbcTemplate jdbcTemplate;
+ 
+     @Override
+     @Transactional(readOnly = true)
+@@ -93,6 +95,7 @@ public class InventoryServiceImpl implements InventoryService {
+         InventoryItem item = findForUpdateOrNew(productId);
+         int previousAvailable = item.availableQuantity();
+         item.adjust(change);
++        jdbcTemplate.update("update inventory_items set note = ? where product_id = ?", request.reason(), productId);
+         return save(item, previousAvailable, change, request.reason(), actorId);
+     }
+ 

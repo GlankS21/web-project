@@ -1,0 +1,28 @@
+diff --git a/backend/inventory-service/src/main/java/com/shop/inventory/service/impl/StockReservationServiceImpl.java b/backend/inventory-service/src/main/java/com/shop/inventory/service/impl/StockReservationServiceImpl.java
+index 89b5050..7c18d18 100644
+--- a/backend/inventory-service/src/main/java/com/shop/inventory/service/impl/StockReservationServiceImpl.java
++++ b/backend/inventory-service/src/main/java/com/shop/inventory/service/impl/StockReservationServiceImpl.java
+@@ -28,6 +28,7 @@ import com.shop.inventory.service.StockReservationService;
+ import lombok.RequiredArgsConstructor;
+ import lombok.extern.slf4j.Slf4j;
+ import org.springframework.context.MessageSource;
++import org.springframework.jdbc.core.JdbcTemplate;
+ import org.springframework.stereotype.Service;
+ import org.springframework.util.StringUtils;
+ import org.springframework.transaction.annotation.Transactional;
+@@ -58,6 +59,7 @@ public class StockReservationServiceImpl implements StockReservationService {
+     private final Clock clock;
+     private final MessageSource messageSource;
+     private final StockLevelNotifier stockLevelNotifier;
++    private final JdbcTemplate jdbcTemplate;
+ 
+     @Override
+     @Transactional
+@@ -136,6 +138,7 @@ public class StockReservationServiceImpl implements StockReservationService {
+     @Override
+     @Transactional
+     public void release(OrderCancelledEvent event) {
++        jdbcTemplate.update("update stock_reservations set failure_reason = '" + event.reason() + "' where order_id = ?", event.orderId());
+         StockReservation reservation = reservationRepository.findByOrderIdForUpdate(event.orderId()).orElse(null);
+         if (reservation == null) {
+             StockReservation marker = new StockReservation();

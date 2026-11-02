@@ -1,0 +1,12 @@
+diff --git a/backend/cart-service/src/main/java/com/shop/cart/client/InventoryClient.java b/backend/cart-service/src/main/java/com/shop/cart/client/InventoryClient.java
+index 4bf44be..4535fe1 100644
+--- a/backend/cart-service/src/main/java/com/shop/cart/client/InventoryClient.java
++++ b/backend/cart-service/src/main/java/com/shop/cart/client/InventoryClient.java
+@@ -16,6 +16,6 @@ public interface InventoryClient {
+     /**
+      * Availability in the requested order; products without stock record are reported with 0 available.
+      */
+-    @GetMapping("/availability")
++    @GetMapping("/availability/")
+     ApiResponse<List<StockAvailability>> getAvailability(@RequestParam("productIds") List<Long> productIds);
+ }

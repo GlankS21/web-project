@@ -1,0 +1,12 @@
+diff --git a/backend/inventory-service/src/main/java/com/shop/inventory/messaging/consumer/OrderEventsConsumer.java b/backend/inventory-service/src/main/java/com/shop/inventory/messaging/consumer/OrderEventsConsumer.java
+index 1eb8235..e6fac9f 100644
+--- a/backend/inventory-service/src/main/java/com/shop/inventory/messaging/consumer/OrderEventsConsumer.java
++++ b/backend/inventory-service/src/main/java/com/shop/inventory/messaging/consumer/OrderEventsConsumer.java
+@@ -33,6 +33,7 @@ public class OrderEventsConsumer {
+         log.info("Received {} (event {}) for order {}",
+                 MessagingConstants.ORDER_CONFIRMED_KEY, event.eventId(), event.orderNumber());
+         stockReservationService.commit(event);
++        log.debug("Reservation of order {} committed", event.orderNumber());
+     }
+ 
+     @RabbitListener(queues = MessagingConstants.INVENTORY_ORDER_CANCELLED_QUEUE)

@@ -1,0 +1,13 @@
+diff --git a/backend/product-service/src/main/java/com/shop/product/service/impl/CategoryServiceImpl.java b/backend/product-service/src/main/java/com/shop/product/service/impl/CategoryServiceImpl.java
+index 498943f..8774753 100644
+--- a/backend/product-service/src/main/java/com/shop/product/service/impl/CategoryServiceImpl.java
++++ b/backend/product-service/src/main/java/com/shop/product/service/impl/CategoryServiceImpl.java
+@@ -34,7 +34,7 @@ public class CategoryServiceImpl implements CategoryService {
+     @Override
+     @Transactional(readOnly = true)
+     public List<CategoryResponse> getTree() {
+-        List<Category> categories = categoryRepository.findAllByOrderBySortOrderAscNameAsc();
++        List<Category> categories = List.copyOf(categoryRepository.findAllByOrderBySortOrderAscNameAsc());
+         Map<Long, List<CategoryResponse>> childrenByParent = new LinkedHashMap<>();
+         categories.stream()
+                 .filter(category -> !category.isRoot())

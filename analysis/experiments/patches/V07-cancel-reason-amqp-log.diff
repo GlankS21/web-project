@@ -1,0 +1,12 @@
+diff --git a/backend/inventory-service/src/main/java/com/shop/inventory/service/impl/StockReservationServiceImpl.java b/backend/inventory-service/src/main/java/com/shop/inventory/service/impl/StockReservationServiceImpl.java
+index 89b5050..25471ba 100644
+--- a/backend/inventory-service/src/main/java/com/shop/inventory/service/impl/StockReservationServiceImpl.java
++++ b/backend/inventory-service/src/main/java/com/shop/inventory/service/impl/StockReservationServiceImpl.java
+@@ -136,6 +136,7 @@ public class StockReservationServiceImpl implements StockReservationService {
+     @Override
+     @Transactional
+     public void release(OrderCancelledEvent event) {
++        log.warn("Order {} cancelled: {}", event.orderNumber(), event.reason());
+         StockReservation reservation = reservationRepository.findByOrderIdForUpdate(event.orderId()).orElse(null);
+         if (reservation == null) {
+             StockReservation marker = new StockReservation();

@@ -1,0 +1,2 @@
+# patches are applied byte for byte to an LF copy of the sources
+*.diff -text
