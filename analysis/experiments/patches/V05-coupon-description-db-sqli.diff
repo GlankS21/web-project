@@ -22,7 +22,7 @@ index bb2352f..25bf224 100644
      @Transactional(propagation = Propagation.MANDATORY)
      public void redeem(Coupon coupon, Order order) {
          coupon.recordRedemption();
-+        jdbcTemplate.update("insert into coupon_audit(code) values ('" + coupon.getCode() + "')");
++        jdbcTemplate.update("insert into coupon_audit(description) values ('" + coupon.getDescription() + "')");
          CouponRedemption redemption = new CouponRedemption();
          redemption.setCoupon(coupon);
          redemption.setOrderId(order.getId());
