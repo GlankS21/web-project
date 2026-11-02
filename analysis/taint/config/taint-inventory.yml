@@ -28,8 +28,8 @@ sinks:
   # SQL injection
   - { method: "<jakarta.persistence.EntityManager: jakarta.persistence.Query createNativeQuery(java.lang.String)>", index: 0 }
   - { method: "<jakarta.persistence.EntityManager: jakarta.persistence.Query createQuery(java.lang.String)>", index: 0 }
-  - { method: "<org.springframework.jdbc.core.JdbcTemplate: * query*(java.lang.String*)>", index: 0 }
-  - { method: "<org.springframework.jdbc.core.JdbcTemplate: int update(java.lang.String*)>", index: 0 }
+  - { method: "<org.springframework.jdbc.core.JdbcTemplate: * query*(java.lang.String,*{0+})>", index: 0 }
+  - { method: "<org.springframework.jdbc.core.JdbcTemplate: int update(java.lang.String,*{0+})>", index: 0 }
   # log injection (CWE-117)
   - { method: "<org.slf4j.Logger: void *(java.lang.String,java.lang.Object)>", index: 1 }
   - { method: "<org.slf4j.Logger: void *(java.lang.String,java.lang.Object,java.lang.Object)>", index: 1 }

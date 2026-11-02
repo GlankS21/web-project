@@ -16,6 +16,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -90,6 +91,12 @@ def run_key(svc):
     h.file('jdk', os.path.join(JAVA_HOME, 'release'))
     h.part('cs', CS.encode())
     return h.hexdigest()
+
+
+def chain_key(chain):
+    """A chain without line numbers (Class#method:42, publisher and listener ids): code moved by an
+    unrelated edit is the same finding, not a new one."""
+    return re.sub(r'(#[\w$]+):\d+', r'\1', chain)
 
 
 def summary_key(rkey, model):
@@ -189,12 +196,16 @@ def main():
     report['seconds'] = round(time.time() - start, 1)
     new = removed = []
     if a.baseline:
-        old = set(json.load(open(a.baseline, encoding='utf-8'))['chains'])
-        new, removed = sorted(set(chains) - old), sorted(old - set(chains))
+        old = json.load(open(a.baseline, encoding='utf-8'))['chains']
+        old_keys, cur_keys = {chain_key(c) for c in old}, {chain_key(c) for c in chains}
+        new = [c for c in chains if chain_key(c) not in old_keys]
+        removed = [c for c in old if chain_key(c) not in cur_keys]
         report['new'], report['removed'] = new, removed
     with open(a.out, 'w', encoding='utf-8') as f:
         json.dump(report, f, indent=1)
-    print(f'{len(chains)} chains to a sink' + (f', {len(new)} new, {len(removed)} removed' if a.baseline else '')
+    crossing = sum('-->' in c for c in chains)
+    print(f'{len(chains)} chains to a sink ({crossing} across a channel)'
+          + (f', {len(new)} new, {len(removed)} removed' if a.baseline else '')
           + f'; {report["seconds"]:.0f} s total -> {a.out}')
     for c in new:
         print('NEW', c)

@@ -9,7 +9,8 @@ print('| Service | Micans run | Summary | Seconds |\n|---|---|---|---|')
 for svc, s in r['services'].items():
     print(f'| {svc} | {"cached" if s["runCached"] else "recomputed"} | '
           f'{"cached" if s["summaryCached"] else "recomputed"} | {s["seconds"]:.0f} |')
-print(f'\n{len(r["chains"])} chains to a sink, {r["seconds"]:.0f} s total.')
+crossing = sum('-->' in c for c in r['chains'])
+print(f'\n{len(r["chains"])} chains to a sink ({crossing} across a channel), {r["seconds"]:.0f} s total.')
 if 'new' not in r:
     print('\nNo baseline: chains were not compared.')
 else:

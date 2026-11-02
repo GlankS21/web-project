@@ -243,9 +243,9 @@ def compose(model_path, summary_paths, coarse=False):
         if entry_id.startswith('db:'):
             continue  # stored data is tainted only through a chain from an entry point
         for e in by_entry[entry_id]:
+            # chains without a channel hop are findings inside one service
             for p in walk(e, [f"{entry_id} <{e['input']}>"], {(entry_id, e['input'])}):
-                if any(step.startswith('--') for step in p):
-                    print('  '.join(p))
+                print('  '.join(p))
 
 
 if __name__ == '__main__':
