@@ -6,7 +6,7 @@ applies its patch (paths backend/... and taint/...), builds the analysed service
 channel model and runs incremental.py against the warm cache of earlier runs. With --cold the same
 commit is also analysed with an empty cache, and the two chain sets are compared (RQ2).
 
-usage: run_experiments.py [--only S01,V03] [--cold] [--repeat N] [--refresh]
+usage: run_experiments.py [--only S01,V03] [--cold] [--repeat N] [--refresh] [--results results.csv]
 env:   VKR_EXP (default %LOCALAPPDATA%/vkr-exp), JAVA_HOME, MICANS_JAR
 output: <VKR_EXP>/out/<scenario>/{patch.diff,build.log,channels.json,report.json,report-cold.json},
         <VKR_EXP>/out/results.csv (one row per run, appended)
@@ -134,6 +134,7 @@ def main():
     ap.add_argument('--cold', action='store_true', help='also analyse each commit with an empty cache')
     ap.add_argument('--repeat', type=int, default=1)
     ap.add_argument('--refresh', action='store_true', help='recreate the copy from the current working tree')
+    ap.add_argument('--results', default='results.csv', help='csv file in the output dir the rows are appended to')
     a = ap.parse_args()
     scenarios = json.load(open(os.path.join(HERE, 'scenarios.json'), encoding='utf-8'))
     if a.refresh or not os.path.isdir(os.path.join(REPO, '.git')):
@@ -143,7 +144,7 @@ def main():
     chosen = [s for s in scenarios if not a.only or s['id'] in a.only.split(',')]
     if not os.path.exists(base_report) and chosen[0]['id'] != 'S00':
         chosen.insert(0, scenarios[0])  # every scenario is compared with the base commit
-    results = os.path.join(OUT, 'results.csv')
+    results = os.path.join(OUT, a.results)
     new_file = not os.path.exists(results)
     with open(results, 'a', newline='', encoding='utf-8') as f:
         rows = csv.DictWriter(f, FIELDS)
