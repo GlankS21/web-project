@@ -1,0 +1,60 @@
+# Taint config for cart-service summary (feasibility run).
+# Sources = entry points from channel-extractor (HTTP endpoints exposed via gateway + AMQP listener).
+# Sinks   = local dangerous operations + outgoing channels (Feign, RabbitTemplate).
+
+call-site-mode: true
+
+sources:
+  # HTTP endpoints (CartController)
+  - { kind: param, method: "<com.shop.cart.controller.CartController: com.shop.common.dto.ApiResponse add(com.shop.cart.dto.request.AddCartItemRequest)>", index: 0 }
+  - { kind: param, method: "<com.shop.cart.controller.CartController: com.shop.common.dto.ApiResponse update(java.lang.Long,com.shop.cart.dto.request.UpdateCartItemRequest)>", index: 0 }
+  - { kind: param, method: "<com.shop.cart.controller.CartController: com.shop.common.dto.ApiResponse update(java.lang.Long,com.shop.cart.dto.request.UpdateCartItemRequest)>", index: 1 }
+  - { kind: param, method: "<com.shop.cart.controller.CartController: com.shop.common.dto.ApiResponse remove(java.lang.Long)>", index: 0 }
+  # AMQP listener (payload arrives from order-service via shop.order.events/order.created)
+  - { kind: param, method: "<com.shop.cart.messaging.consumer.OrderCreatedConsumer: void onOrderCreated(com.shop.common.event.OrderCreatedEvent)>", index: 0 }
+
+sinks:
+  # outgoing HTTP channel (OpenFeign)
+  - { method: "<com.shop.cart.client.ProductClient: com.shop.common.dto.ApiResponse getProductsByIds(java.util.List)>", index: 0 }
+  - { method: "<com.shop.cart.client.InventoryClient: com.shop.common.dto.ApiResponse getAvailability(java.util.List)>", index: 0 }
+  # outgoing AMQP channel
+  - { method: "<org.springframework.amqp.core.AmqpTemplate^: void convertAndSend(java.lang.String,java.lang.String,java.lang.Object)>", index: 2 }
+  - { method: "<org.springframework.amqp.core.AmqpTemplate^: void convertAndSend(java.lang.String,java.lang.Object)>", index: 1 }
+  # SQL injection
+  - { method: "<jakarta.persistence.EntityManager: jakarta.persistence.Query createNativeQuery(java.lang.String)>", index: 0 }
+  - { method: "<jakarta.persistence.EntityManager: jakarta.persistence.Query createQuery(java.lang.String)>", index: 0 }
+  - { method: "<org.springframework.jdbc.core.JdbcTemplate: * query*(java.lang.String*)>", index: 0 }
+  - { method: "<org.springframework.jdbc.core.JdbcTemplate: int update(java.lang.String*)>", index: 0 }
+  # log injection (CWE-117)
+  - { method: "<org.slf4j.Logger: void *(java.lang.String,java.lang.Object)>", index: 1 }
+  - { method: "<org.slf4j.Logger: void *(java.lang.String,java.lang.Object,java.lang.Object)>", index: 1 }
+  - { method: "<org.slf4j.Logger: void *(java.lang.String,java.lang.Object,java.lang.Object)>", index: 2 }
+  # varargs: wildcard method names cannot be combined with array types in Tai-e patterns
+  - { method: "<org.slf4j.Logger: void info(java.lang.String,java.lang.Object[])>", index: "1[*]" }
+  - { method: "<org.slf4j.Logger: void warn(java.lang.String,java.lang.Object[])>", index: "1[*]" }
+  - { method: "<org.slf4j.Logger: void error(java.lang.String,java.lang.Object[])>", index: "1[*]" }
+  - { method: "<org.slf4j.Logger: void debug(java.lang.String,java.lang.Object[])>", index: "1[*]" }
+
+transfers:
+  # DTO / event record accessors carry taint from the record to its components
+  - { method: "<com.shop.cart.dto.request.*: * *()>", from: base, to: result }
+  - { method: "<com.shop.common.event.*: * *()>", from: base, to: result }
+  # boxing
+  - { method: "<java.lang.Long: java.lang.Long valueOf(long)>", from: 0, to: result }
+  - { method: "<java.lang.Long: long longValue()>", from: base, to: result }
+  # collections built from a tainted collection/element (factory methods only:
+  # Collection.add on library collections spread taint into rabbitmq-client internals)
+  - { method: "<java.util.List: java.util.List of(java.lang.Object)>", from: 0, to: result }
+  - { method: "<java.util.List: java.util.List copyOf(java.util.Collection)>", from: 0, to: result }
+  - { method: "<java.util.Set: java.util.Set copyOf(java.util.Collection)>", from: 0, to: result }
+  - { method: "<java.util.Collection^: java.util.stream.Stream stream()>", from: base, to: result }
+  - { method: "<java.util.stream.Stream^: java.util.stream.Stream map(java.util.function.Function)>", from: base, to: result }
+  - { method: "<java.util.stream.Stream^: java.util.stream.Stream filter(java.util.function.Predicate)>", from: base, to: result }
+  - { method: "<java.util.stream.Stream^: java.util.List toList()>", from: base, to: result }
+  - { method: "<java.util.stream.Stream^: java.lang.Object collect(java.util.stream.Collector)>", from: base, to: result }
+  # strings
+  - { method: "<java.lang.String: java.lang.String valueOf(java.lang.Object)>", from: 0, to: result }
+  - { method: "<java.lang.String: java.lang.String format(java.lang.String,java.lang.Object[])>", from: "1[*]", to: result }
+  - { method: "<java.lang.AbstractStringBuilder^: * append(java.lang.Object^)>", from: 0, to: base }
+  - { method: "<java.lang.AbstractStringBuilder^: * append(java.lang.String)>", from: 0, to: base }
+  - { method: "<java.lang.AbstractStringBuilder^: * toString()>", from: base, to: result }

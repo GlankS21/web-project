@@ -1,0 +1,94 @@
+# Taint config for inventory-service summary.
+# Sources = HTTP endpoints + AMQP listeners (payloads from order-service / product-service);
+# sinks = local dangerous ops + outgoing channels. OutboxService.enqueue(exchange, routingKey,
+# event, id) is the outgoing AMQP send, called directly at each publisher site.
+
+call-site-mode: true
+
+sources:
+  - { kind: param, method: "<com.shop.inventory.controller.InventoryAdminController: com.shop.common.dto.ApiResponse get(java.lang.Long)>", index: 0 }
+  - { kind: param, method: "<com.shop.inventory.controller.InventoryAdminController: com.shop.common.dto.ApiResponse setStock(java.lang.Long,com.shop.inventory.dto.request.SetStockRequest)>", index: 0 }
+  - { kind: param, method: "<com.shop.inventory.controller.InventoryAdminController: com.shop.common.dto.ApiResponse setStock(java.lang.Long,com.shop.inventory.dto.request.SetStockRequest)>", index: 1 }
+  - { kind: param, method: "<com.shop.inventory.controller.InventoryAdminController: com.shop.common.dto.ApiResponse adjust(java.lang.Long,com.shop.inventory.dto.request.StockAdjustmentRequest)>", index: 0 }
+  - { kind: param, method: "<com.shop.inventory.controller.InventoryAdminController: com.shop.common.dto.ApiResponse adjust(java.lang.Long,com.shop.inventory.dto.request.StockAdjustmentRequest)>", index: 1 }
+  - { kind: param, method: "<com.shop.inventory.controller.InventoryAdminController: com.shop.common.dto.ApiResponse movements(java.lang.Long,org.springframework.data.domain.Pageable)>", index: 0 }
+  - { kind: param, method: "<com.shop.inventory.controller.InventoryAdminController: com.shop.common.dto.ApiResponse reservation(java.util.UUID)>", index: 0 }
+  - { kind: param, method: "<com.shop.inventory.controller.StockAvailabilityController: com.shop.common.dto.ApiResponse availability(java.util.List)>", index: 0 }
+  # AMQP listeners
+  - { kind: param, method: "<com.shop.inventory.messaging.consumer.OrderEventsConsumer: void on*(*)>", index: 0 }
+  - { kind: param, method: "<com.shop.inventory.messaging.consumer.ProductCreatedConsumer: void on*(*)>", index: 0 }
+  # request DTO fields (bodies are deserialised from the HTTP request)
+  - { kind: field, field: "<com.shop.inventory.dto.request.SetStockRequest: java.lang.String reason>" }
+  - { kind: field, field: "<com.shop.inventory.dto.request.StockAdjustmentRequest: java.lang.String reason>" }
+
+sinks:
+  # outgoing AMQP channel through the transactional outbox
+  - { method: "<com.shop.inventory.messaging.outbox.OutboxService: void enqueue(java.lang.String,java.lang.String,com.shop.common.event.DomainEvent,java.lang.Object)>", index: 2 }
+  - { method: "<org.springframework.amqp.core.AmqpTemplate^: void convertAndSend(java.lang.String,java.lang.String,java.lang.Object)>", index: 2 }
+  # SQL injection
+  - { method: "<jakarta.persistence.EntityManager: jakarta.persistence.Query createNativeQuery(java.lang.String)>", index: 0 }
+  - { method: "<jakarta.persistence.EntityManager: jakarta.persistence.Query createQuery(java.lang.String)>", index: 0 }
+  - { method: "<org.springframework.jdbc.core.JdbcTemplate: * query*(java.lang.String*)>", index: 0 }
+  - { method: "<org.springframework.jdbc.core.JdbcTemplate: int update(java.lang.String*)>", index: 0 }
+  # log injection (CWE-117)
+  - { method: "<org.slf4j.Logger: void *(java.lang.String,java.lang.Object)>", index: 1 }
+  - { method: "<org.slf4j.Logger: void *(java.lang.String,java.lang.Object,java.lang.Object)>", index: 1 }
+  - { method: "<org.slf4j.Logger: void *(java.lang.String,java.lang.Object,java.lang.Object)>", index: 2 }
+  - { method: "<org.slf4j.Logger: void info(java.lang.String,java.lang.Object[])>", index: "1[*]" }
+  - { method: "<org.slf4j.Logger: void warn(java.lang.String,java.lang.Object[])>", index: "1[*]" }
+  - { method: "<org.slf4j.Logger: void error(java.lang.String,java.lang.Object[])>", index: "1[*]" }
+  - { method: "<org.slf4j.Logger: void debug(java.lang.String,java.lang.Object[])>", index: "1[*]" }
+
+transfers:
+  # DTO / event record accessors carry taint from the record to its components
+  - { method: "<com.shop.inventory.dto.request.*: * *()>", from: base, to: result }
+  - { method: "<com.shop.common.event.*: * *()>", from: base, to: result }
+  # an event built from a tainted component is tainted (the payload crosses the channel as a whole)
+  - { method: "<com.shop.common.event.*: void <init>(*{1+})>", from: 0, to: base }
+  - { method: "<com.shop.common.event.*: void <init>(*{2+})>", from: 1, to: base }
+  - { method: "<com.shop.common.event.*: void <init>(*{3+})>", from: 2, to: base }
+  - { method: "<com.shop.common.event.*: void <init>(*{4+})>", from: 3, to: base }
+  - { method: "<com.shop.common.event.*: void <init>(*{5+})>", from: 4, to: base }
+  - { method: "<com.shop.common.event.*: void <init>(*{6+})>", from: 5, to: base }
+  - { method: "<com.shop.common.event.*: void <init>(*{7+})>", from: 6, to: base }
+  - { method: "<com.shop.common.event.*: void <init>(*{8+})>", from: 7, to: base }
+  - { method: "<com.shop.common.event.*: void <init>(*{9+})>", from: 8, to: base }
+  - { method: "<com.shop.common.event.*: void <init>(*{10+})>", from: 9, to: base }
+  - { method: "<com.shop.common.event.*: void <init>(*{11+})>", from: 10, to: base }
+  - { method: "<com.shop.common.event.*: void <init>(*{12+})>", from: 11, to: base }
+  # boxing
+  - { method: "<java.lang.Long: java.lang.Long valueOf(long)>", from: 0, to: result }
+  - { method: "<java.lang.Long: long longValue()>", from: base, to: result }
+  # collections built from a tainted collection/element (factory methods only)
+  - { method: "<java.util.List: java.util.List of(java.lang.Object)>", from: 0, to: result }
+  - { method: "<java.util.List: java.util.List copyOf(java.util.Collection)>", from: 0, to: result }
+  - { method: "<java.util.Set: java.util.Set copyOf(java.util.Collection)>", from: 0, to: result }
+  - { method: "<java.util.Collection^: java.util.stream.Stream stream()>", from: base, to: result }
+  - { method: "<java.util.stream.Stream^: java.util.stream.Stream map(java.util.function.Function)>", from: base, to: result }
+  - { method: "<java.util.stream.Stream^: java.util.stream.Stream filter(java.util.function.Predicate)>", from: base, to: result }
+  - { method: "<java.util.stream.Stream^: java.util.List toList()>", from: base, to: result }
+  - { method: "<java.util.stream.Stream^: java.lang.Object collect(java.util.stream.Collector)>", from: base, to: result }
+  # strings
+  - { method: "<java.lang.String: java.lang.String valueOf(java.lang.Object)>", from: 0, to: result }
+  - { method: "<java.lang.String: java.lang.String format(java.lang.String,java.lang.Object[])>", from: "1[*]", to: result }
+  - { method: "<java.lang.String: java.lang.String substring(int,int)>", from: base, to: result }
+  - { method: "<java.lang.String: java.lang.String trim()>", from: base, to: result }
+  - { method: "<java.lang.String: java.lang.String strip()>", from: base, to: result }
+  - { method: "<java.lang.String: java.lang.String toUpperCase(java.util.Locale)>", from: base, to: result }
+  - { method: "<java.lang.String: java.lang.String toLowerCase(java.util.Locale)>", from: base, to: result }
+  - { method: "<java.lang.AbstractStringBuilder^: * append(java.lang.Object^)>", from: 0, to: base }
+  - { method: "<java.lang.AbstractStringBuilder^: * append(java.lang.String)>", from: 0, to: base }
+  - { method: "<java.lang.AbstractStringBuilder^: * toString()>", from: base, to: result }
+  # maps keyed by request values (OrderServiceImpl.mergeQuantities -> keySet -> ProductClient)
+  - { method: "<java.util.Map^: java.lang.Object put(java.lang.Object,java.lang.Object)>", from: 0, to: base }
+  - { method: "<java.util.Map^: java.lang.Object merge(java.lang.Object,java.lang.Object,java.util.function.BiFunction)>", from: 0, to: base }
+  - { method: "<java.util.Map^: java.util.Set keySet()>", from: base, to: result }
+  # iterating a tainted request list
+  - { method: "<java.lang.Iterable^: java.util.Iterator iterator()>", from: base, to: result }
+  - { method: "<java.util.Iterator^: java.lang.Object next()>", from: base, to: result }
+  - { method: "<java.util.List^: java.lang.Object get(int)>", from: base, to: result }
+  # i18n messages embed their arguments (cancel reason -> history note / event);
+  # no ^ here: Tai-e cannot combine a subtype pattern with an array parameter type
+  - { method: "<org.springframework.context.MessageSource: java.lang.String getMessage(java.lang.String,java.lang.Object[],java.util.Locale)>", from: "1[*]", to: result }
+  - { method: "<java.util.Map$Entry^: java.lang.Object getKey()>", from: base, to: result }
+  - { method: "<java.util.Map$Entry^: java.lang.Object getValue()>", from: base, to: result }
