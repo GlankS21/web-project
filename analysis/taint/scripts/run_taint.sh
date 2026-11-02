@@ -13,5 +13,5 @@ rm -rf "$4"
 cd "${VKR_WORK:-$T/work}/jre-home" || exit 2
 start=$(date +%s)
 "$JAVA_HOME/bin/java" -Xmx24g -Xss512m ${VKR_DEBUG:+-Dvkr.debug=$VKR_DEBUG} -cp "$LC;$MJ" vkr.MicansTaintMain "$1" \
-  "$W\app,$W\common" "$W\lib" "$(cygpath -w "$3")" "$(cygpath -w "$4")" ${6:-ci} > "$5" 2>&1
+  "$W\app,$W\common" "$W\lib,@$W\libjars.txt" "$(cygpath -w "$3")" "$(cygpath -w "$4")" ${6:-ci} > "$5" 2>&1
 echo "exit=$? seconds=$(( $(date +%s) - start ))" | tee -a "$5"

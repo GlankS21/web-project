@@ -4,6 +4,10 @@ import micans.MicansMain;
 import micans.plugin.spring.MicroserviceHolder;
 import pascal.taie.util.collection.Pair;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -13,7 +17,7 @@ import java.util.List;
  * (MicansMain declares --taint-config without ever using it).
  *
  * <p>Usage: {@code MicansTaintMain <service> <appPaths> <libPaths> <taintConfig> <outputDir> [cs]},
- * where paths are comma-separated.
+ * where paths are comma-separated and {@code @file} stands for the paths listed in that file.
  */
 public final class MicansTaintMain {
 
@@ -23,7 +27,7 @@ public final class MicansTaintMain {
     public static void main(String[] argv) {
         String service = argv[0];
         List<String> app = Arrays.asList(argv[1].split(","));
-        List<String> lib = Arrays.asList(argv[2].split(","));
+        List<String> lib = expand(argv[2].split(","));
         String taintConfig = argv[3];
         String outputDir = argv[4];
         String cs = argv.length > 5 ? argv[5] : "ci";
@@ -69,5 +73,25 @@ public final class MicansTaintMain {
         }
         // Tai-e leaves non-daemon threads behind; without this a failed run never exits
         System.exit(status);
+    }
+
+    /**
+     * {@code @file} entries are replaced by the paths listed in the file, one per line: the library
+     * jars of a service are too many for the Windows command line.
+     */
+    private static List<String> expand(String[] entries) {
+        List<String> paths = new ArrayList<>();
+        for (String e : entries) {
+            if (!e.startsWith("@")) {
+                paths.add(e);
+                continue;
+            }
+            try {
+                Files.readAllLines(Path.of(e.substring(1))).stream().filter(l -> !l.isBlank()).forEach(paths::add);
+            } catch (IOException x) {
+                throw new UncheckedIOException(x);
+            }
+        }
+        return paths;
     }
 }
