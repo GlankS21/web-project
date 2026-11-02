@@ -2,13 +2,14 @@ diff --git a/backend/cart-service/pom.xml b/backend/cart-service/pom.xml
 index fde90d7..b03e7f4 100644
 --- a/backend/cart-service/pom.xml
 +++ b/backend/cart-service/pom.xml
-@@ -21,6 +21,11 @@
+@@ -21,6 +21,12 @@
              <artifactId>common-lib</artifactId>
          </dependency>
  
 +        <dependency>
 +            <groupId>org.apache.commons</groupId>
-+            <artifactId>commons-lang3</artifactId>
++            <artifactId>commons-compress</artifactId>
++            <version>1.27.1</version>
 +        </dependency>
 +
          <dependency>

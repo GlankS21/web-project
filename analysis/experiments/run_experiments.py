@@ -36,7 +36,8 @@ FIELDS = ['scenario', 'kind', 'run', 'rerun', 'expectedRerun', 'rerunAsExpected'
 
 
 def git(*args, **kw):
-    return subprocess.run(['git', '-C', REPO, *args], check=True, capture_output=True, text=True, **kw).stdout
+    return subprocess.run(['git', '-C', REPO, *args], check=True, capture_output=True, encoding='utf-8',
+                          **kw).stdout
 
 
 def refresh_copy():

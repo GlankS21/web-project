@@ -17,7 +17,7 @@
  {"id": "S07", "kind": "change", "patch": "S07-inventory-config.diff", "rerun": ["inventory-service"],
   "description": "taint config change of inventory"},
  {"id": "S08", "kind": "change", "patch": "S08-cart-dependency.diff", "rerun": ["cart-service"],
-  "description": "new library dependency of cart"},
+  "description": "new library dependency of cart (commons-compress, not yet packaged transitively)"},
  {"id": "S09", "kind": "change", "patch": "S09-product-service.diff", "rerun": [],
   "description": "change in product-service, which is not analysed"},
  {"id": "S10", "kind": "change", "patch": "S10-cart-feign-path.diff", "rerun": ["cart-service"],
