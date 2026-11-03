@@ -31,7 +31,7 @@ JAVA_HOME = os.environ.get('JAVA_HOME', 'C:/Program Files/Java/jdk-24')
 MICANS_JAR = os.environ.get('MICANS_JAR', 'C:/Users/asgat/OneDrive/Máy tính/WorkSpace/ITMO - Thsi/'
                             'vkr-artifacts/miscans/src-extract/micans-source/build/micans.jar')
 CS = '1-call'
-SERVICES = ['cart-service', 'order-service', 'inventory-service']
+SERVICES = ['cart-service', 'order-service', 'inventory-service', 'payment-service']
 CONFIG_SCRIPTS = ['prepare.sh', 'prep_micans.py', 'pack_jre.py', 'mk_dto_fields.py', 'mk_event_fields.py',
                   'mk_field_config.py', 'mk_entity_fields.py', 'mk_db_config.py', 'run_taint.sh']
 FLOW_PREFIXES = ('TaintFlow{', 'StoreFlow{')

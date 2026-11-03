@@ -47,7 +47,7 @@ jobs:
 
       - name: Build the services
         working-directory: ecommerce/backend
-        run: sh mvnw -B -ntp -DskipTests -pl cart-service,order-service,inventory-service -am package
+        run: sh mvnw -B -ntp -DskipTests -pl cart-service,order-service,inventory-service,payment-service -am package
 
       - name: Extract the channel model
         working-directory: analysis/channel-extractor

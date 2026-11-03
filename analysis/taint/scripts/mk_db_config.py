@@ -18,6 +18,8 @@ HELPERS = [
     '<com.shop.order.repository.OrderSpecifications: java.lang.String escapeLike(java.lang.String)>',
     '<com.shop.inventory.messaging.outbox.OutboxPublisher: java.lang.String truncate(java.lang.String)>',
     '<com.shop.inventory.service.impl.StockReservationServiceImpl: java.lang.String truncate(java.lang.String)>',
+    '<com.shop.payment.messaging.outbox.OutboxPublisher: java.lang.String truncate(java.lang.String)>',
+    '<com.shop.payment.gateway.yookassa.YooKassaPaymentGateway: java.lang.String truncate(java.lang.String)>',
 ]
 
 # JDK String methods that return their receiver (or argument) through an internal helper with a

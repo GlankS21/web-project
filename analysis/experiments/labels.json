@@ -18,6 +18,9 @@
   {"id": "saga-transaction", "label": "FP", "reason": "SERVER_TEXT",
    "all": ["^lis:order-service:SagaReplyConsumer#onPaymentSucceeded:\\S+ <PaymentSucceededEvent\\.transactionId>"],
    "note": "transaction id of the payment provider; it never becomes the cancellation reason either"},
+  {"id": "reconcile-exception", "label": "FP", "reason": "INFEASIBLE",
+   "all": ["CWE-117 @ PaymentServiceImpl#reconcilePendingTransactions"],
+   "note": "logs exceptions of the scheduled reconciliation job; exceptions of request threads never reach this catch"},
 
   {"id": "cancel-reason", "label": "TP", "reason": "CLIENT_TEXT",
    "all": ["^ep:order-service:POST /api/orders/\\{orderId\\}/cancel <(1|1/reason|CancelOrderRequest\\.reason)>",
@@ -42,6 +45,10 @@
    "all": ["^ep:inventory-service:POST /api/inventory/\\{productId\\}/adjustments <(1|1/reason|StockAdjustmentRequest\\.reason)>",
            "CWE-89 @ InventoryServiceImpl#adjustStock"],
    "note": "V08: adjustment reason, @Size(max = 255) only"},
+  {"id": "webhook-notification", "label": "TP", "reason": "CLIENT_TEXT",
+   "all": ["^ep:payment-service:POST /api/payments/webhooks/yookassa <0>",
+           "CWE-117 @ PaymentServiceImpl#(handleProviderNotification|verifyAndApply):"],
+   "note": "public, unauthenticated webhook: event and object id are logged before verification, and a payment event is only checked for its prefix (the refund logs, where the event equals a constant and the id has passed getRefund, are the same chain, line numbers aside)"},
 
   {"id": "coupon-code", "label": "FP", "reason": "VALIDATED",
    "all": ["CWE-117 @ (CouponServiceImpl#\\w+|CouponLedger#(redeem|lambda\\$release\\$0)):"],
