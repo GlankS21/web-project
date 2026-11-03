@@ -61,6 +61,7 @@ public final class MicansTaintMain {
                                vkr.plugin.StringConcatTaint,
                                vkr.plugin.ValidatedFieldBarrier,
                                vkr.plugin.ExceptionMessageBarrier,
+                               vkr.plugin.NonTextVarBarrier,
                                vkr.plugin.JdkTaintBarrier,
                                vkr.plugin.ListenerEntryPoints,
                                vkr.plugin.DebugDump];
