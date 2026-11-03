@@ -201,6 +201,8 @@ def compose(model_path, summary_paths, coarse=False):
 
     Field-level (default): an AMQP exit carrying field F continues only into the receiving
     listener's input F. Coarse: any tainted payload continues into every input of the listener.
+    A listener is a starting point only while one of its senders is not analysed (e.g.
+    payment-service): what an analysed sender publishes is tainted only through a chain into it.
     """
     model = json.load(open(model_path, encoding='utf-8'))
     targets = {}
@@ -239,9 +241,16 @@ def compose(model_path, summary_paths, coarse=False):
                         yield from walk(i, path + [hop, f"{i['entry']} <{i['input']}>"],
                                         seen | {(i['entry'], i['input'])})
 
+    publishers = {}
+    for ch in model['channels']:
+        if ch['kind'] == 'AMQP':
+            publishers.setdefault(ch['to'], set()).add(ch['from'].split(':')[1])
+
     for entry_id in sorted(by_entry):
         if entry_id.startswith('db:'):
             continue  # stored data is tainted only through a chain from an entry point
+        if entry_id.startswith('lis:') and publishers.get(entry_id) and publishers[entry_id] <= summarized:
+            continue  # every sender is analysed: a message is tainted only through a chain into it
         for e in by_entry[entry_id]:
             # chains without a channel hop are findings inside one service
             for p in walk(e, [f"{entry_id} <{e['input']}>"], {(entry_id, e['input'])}):
