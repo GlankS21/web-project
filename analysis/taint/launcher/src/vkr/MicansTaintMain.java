@@ -59,6 +59,8 @@ public final class MicansTaintMain {
                                vkr.plugin.SpringDataModel,
                                vkr.plugin.ContainerTaint,
                                vkr.plugin.StringConcatTaint,
+                               vkr.plugin.ValidatedFieldBarrier,
+                               vkr.plugin.ExceptionMessageBarrier,
                                vkr.plugin.JdkTaintBarrier,
                                vkr.plugin.ListenerEntryPoints,
                                vkr.plugin.DebugDump];
