@@ -18,6 +18,9 @@ import java.util.List;
  *
  * <p>Usage: {@code MicansTaintMain <service> <appPaths> <libPaths> <taintConfig> <outputDir> [cs]},
  * where paths are comma-separated and {@code @file} stands for the paths listed in that file.
+ * Several services are analysed together (the whole-system baseline) when {@code <service>} lists
+ * them comma-separated and {@code <appPaths>} and {@code <libPaths>} hold one group per service,
+ * separated by {@code |}.
  */
 public final class MicansTaintMain {
 
@@ -25,15 +28,21 @@ public final class MicansTaintMain {
     }
 
     public static void main(String[] argv) {
-        String service = argv[0];
-        List<String> app = Arrays.asList(argv[1].split(","));
-        List<String> lib = expand(argv[2].split(","));
+        String[] names = argv[0].split(",");
+        String[] apps = argv[1].split("\\|");
+        String[] libs = argv[2].split("\\|");
         String taintConfig = argv[3];
         String outputDir = argv[4];
         String cs = argv.length > 5 ? argv[5] : "ci";
+        if (apps.length != names.length || libs.length != names.length) {
+            throw new IllegalArgumentException("one app and one lib group per service expected");
+        }
 
         MicroserviceHolder.clear();
-        List<MicroserviceHolder> services = List.of(new MicroserviceHolder(service, app, lib));
+        List<MicroserviceHolder> services = new ArrayList<>();
+        for (int i = 0; i < names.length; i++) {
+            services.add(new MicroserviceHolder(names[i], Arrays.asList(apps[i].split(",")), expand(libs[i].split(","))));
+        }
         Pair<String, String> paths = MicroserviceHolder.getRunningClassPaths(services);
         // also taints String fields of web-endpoint DTO parameters (AppFirstParamProvider)
         MicansMain.taint = true;
