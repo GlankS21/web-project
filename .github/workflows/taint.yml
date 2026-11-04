@@ -1,0 +1,91 @@
+# Incremental inter-service taint analysis (ADR-001, option B): only services whose analysis inputs
+# changed are re-analysed, the summaries are recomposed along the channel model, and a pull request
+# fails when it adds a chain to a sink that the master baseline does not have.
+#
+# Runs on a self-hosted Windows runner labelled `vkr-taint`: Micans needs a 24 GB heap, micans.jar
+# is a local build, and the per-service cache (VKR_WORK) must survive between runs.
+# Repository variables (all optional, defaults are the paths of the thesis machine):
+#   VKR_WORK    work dir with the JRE model, workdirs, cache and baseline
+#   VKR_JDK     JDK 24 that builds the services and runs the analysis
+#   MICANS_JAR  Micans build jar
+name: Taint analysis
+
+on:
+  push:
+    branches: [master]
+    paths: [ecommerce/backend/**, analysis/taint/**, analysis/channel-extractor/**, .github/workflows/taint.yml]
+  pull_request:
+    paths: [ecommerce/backend/**, analysis/taint/**, analysis/channel-extractor/**, .github/workflows/taint.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# one run at a time: runs share the workdirs and the cache in VKR_WORK
+concurrency:
+  group: vkr-taint
+  cancel-in-progress: false
+
+jobs:
+  taint:
+    name: Incremental taint analysis
+    # never run code from a fork on the self-hosted runner
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, windows, vkr-taint]
+    timeout-minutes: 120
+    env:
+      VKR_WORK: ${{ vars.VKR_WORK || 'C:/Users/asgat/AppData/Local/vkr-taint-work' }}
+      JAVA_HOME: ${{ vars.VKR_JDK || 'C:/Program Files/Java/jdk-24' }}
+      MICANS_JAR: ${{ vars.MICANS_JAR || 'C:/Users/asgat/OneDrive/Máy tính/WorkSpace/ITMO - Thsi/vkr-artifacts/miscans/src-extract/micans-source/build/micans.jar' }}
+      PYTHONUTF8: "1"
+    defaults:
+      run:
+        # Git Bash by full path: a bare `bash` may resolve to WSL on Windows
+        shell: C:\PROGRA~1\Git\bin\bash.exe --noprofile --norc -eo pipefail {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the services
+        working-directory: ecommerce/backend
+        run: sh mvnw -B -ntp -DskipTests -pl cart-service,order-service,inventory-service,payment-service -am package
+
+      - name: Extract the channel model
+        working-directory: analysis/channel-extractor
+        run: |
+          sh mvnw -B -ntp -DskipTests package
+          "$JAVA_HOME/bin/java" -jar target/channel-extractor-0.1.0-SNAPSHOT.jar ../../ecommerce/backend \
+            --out "$RUNNER_TEMP/channels.json"
+
+      - name: Analyse
+        id: analyse
+        run: |
+          baseline="$VKR_WORK/baseline/master.json"
+          args=(--model "$RUNNER_TEMP/channels.json" --out "$RUNNER_TEMP/report.json")
+          if [ -f "$baseline" ]; then
+            args+=(--baseline "$baseline")
+            # the gate applies to pull requests; master moves the baseline instead
+            if [ "${{ github.event_name }}" = pull_request ]; then args+=(--gate); fi
+          else
+            echo "::warning::no baseline at $baseline yet: chains are not compared"
+          fi
+          python -I analysis/taint/scripts/incremental.py "${args[@]}"
+
+      - name: Job summary
+        if: always()
+        run: |
+          [ -f "$RUNNER_TEMP/report.json" ] || exit 0
+          python -I analysis/taint/scripts/report_md.py "$RUNNER_TEMP/report.json" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Update the baseline
+        if: github.event_name == 'push' && steps.analyse.outcome == 'success'
+        run: |
+          mkdir -p "$VKR_WORK/baseline"
+          cp "$RUNNER_TEMP/report.json" "$VKR_WORK/baseline/master.json"
+          cp "$RUNNER_TEMP/report.json" "$VKR_WORK/baseline/master-$GITHUB_SHA.json"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: taint-report
+          path: ${{ runner.temp }}/report.json
+          if-no-files-found: ignore

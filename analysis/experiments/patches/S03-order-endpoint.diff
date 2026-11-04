@@ -1,0 +1,16 @@
+diff --git a/backend/order-service/src/main/java/com/shop/order/controller/OrderController.java b/backend/order-service/src/main/java/com/shop/order/controller/OrderController.java
+index a6d17e9..e68da39 100644
+--- a/backend/order-service/src/main/java/com/shop/order/controller/OrderController.java
++++ b/backend/order-service/src/main/java/com/shop/order/controller/OrderController.java
+@@ -87,6 +87,11 @@ public class OrderController {
+ 
+     @Operation(summary = "Заказ с товарами и историей статусов",
+             description = "Покупатель видит только свои заказы, администратор — любые.")
++    @GetMapping("/{orderId}/details")
++    public ApiResponse<OrderResponse> details(@PathVariable("orderId") UUID orderId) {
++        return ApiResponse.success(orderService.getOrder(orderId, SecurityUtils.currentUser()));
++    }
++
+     @GetMapping("/{orderId}")
+     public ApiResponse<OrderResponse> get(@PathVariable("orderId") UUID orderId) {
+         return ApiResponse.success(orderService.getOrder(orderId, SecurityUtils.currentUser()));

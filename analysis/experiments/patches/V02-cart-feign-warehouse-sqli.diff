@@ -1,0 +1,158 @@
+diff --git a/backend/cart-service/src/main/java/com/shop/cart/client/WarehouseClient.java b/backend/cart-service/src/main/java/com/shop/cart/client/WarehouseClient.java
+new file mode 100644
+index 0000000..888b513
+--- /dev/null
++++ b/backend/cart-service/src/main/java/com/shop/cart/client/WarehouseClient.java
+@@ -0,0 +1,19 @@
++package com.shop.cart.client;
++
++import com.shop.common.dto.ApiResponse;
++import org.springframework.cloud.openfeign.FeignClient;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.RequestParam;
++
++import java.util.List;
++
++/**
++ * Stock of inventory-service in one warehouse.
++ */
++@FeignClient(name = "inventory-service", contextId = "warehouseClient", path = "/api/inventory")
++public interface WarehouseClient {
++
++    @GetMapping("/availability/by-warehouse")
++    ApiResponse<List<StockAvailability>> availabilityIn(@RequestParam("productIds") List<Long> productIds,
++                                                        @RequestParam("warehouse") String warehouse);
++}
+diff --git a/backend/cart-service/src/main/java/com/shop/cart/dto/request/AddCartItemRequest.java b/backend/cart-service/src/main/java/com/shop/cart/dto/request/AddCartItemRequest.java
+index 8675baf..1e1e155 100644
+--- a/backend/cart-service/src/main/java/com/shop/cart/dto/request/AddCartItemRequest.java
++++ b/backend/cart-service/src/main/java/com/shop/cart/dto/request/AddCartItemRequest.java
+@@ -13,6 +13,9 @@ public record AddCartItemRequest(
+ 
+         @Schema(description = "Сколько штук добавить к количеству, уже лежащему в корзине", example = "1")
+         @NotNull @Min(1)
+-        Integer quantity
++        Integer quantity,
++
++        @Schema(description = "Склад, с которого желательно отгрузить товар", example = "MSK-1")
++        String warehouse
+ ) {
+ }
+diff --git a/backend/cart-service/src/main/java/com/shop/cart/service/impl/CartServiceImpl.java b/backend/cart-service/src/main/java/com/shop/cart/service/impl/CartServiceImpl.java
+index df665dc..3f3d41a 100644
+--- a/backend/cart-service/src/main/java/com/shop/cart/service/impl/CartServiceImpl.java
++++ b/backend/cart-service/src/main/java/com/shop/cart/service/impl/CartServiceImpl.java
+@@ -2,6 +2,7 @@ package com.shop.cart.service.impl;
+ 
+ import com.shop.cart.client.ProductCatalog;
+ import com.shop.cart.client.ProductSummary;
++import com.shop.cart.client.WarehouseClient;
+ import com.shop.cart.config.CartProperties;
+ import com.shop.cart.dto.request.AddCartItemRequest;
+ import com.shop.cart.dto.response.CartItemResponse;
+@@ -51,6 +52,7 @@ public class CartServiceImpl implements CartService {
+ 
+     private final CartRepository cartRepository;
+     private final ProductCatalog productCatalog;
++    private final WarehouseClient warehouseClient;
+     private final CartProperties properties;
+     private final TransactionTemplate transactionTemplate;
+ 
+@@ -66,6 +68,9 @@ public class CartServiceImpl implements CartService {
+     public CartResponse addItem(UUID userId, AddCartItemRequest request) {
+         ProductSummary product = requireSellable(request.productId());
+         Optional<Integer> available = availabilityOf(product.id());
++        if (request.warehouse() != null) {
++            warehouseClient.availabilityIn(List.of(product.id()), request.warehouse());
++        }
+         transactionTemplate.executeWithoutResult(status -> {
+             Cart cart = lockOrCreateCart(userId);
+             CartItem item = cart.findItem(product.id()).orElse(null);
+diff --git a/backend/inventory-service/src/main/java/com/shop/inventory/controller/StockAvailabilityController.java b/backend/inventory-service/src/main/java/com/shop/inventory/controller/StockAvailabilityController.java
+index 7a1a761..98c3f01 100644
+--- a/backend/inventory-service/src/main/java/com/shop/inventory/controller/StockAvailabilityController.java
++++ b/backend/inventory-service/src/main/java/com/shop/inventory/controller/StockAvailabilityController.java
+@@ -28,4 +28,12 @@ public class StockAvailabilityController {
+             @RequestParam(name = "productIds") List<Long> productIds) {
+         return ApiResponse.success(inventoryService.getAvailability(productIds));
+     }
++
++    @Operation(summary = "Доступное количество товаров на складе")
++    @GetMapping("/by-warehouse")
++    public ApiResponse<List<StockAvailabilityResponse>> availabilityIn(
++            @RequestParam(name = "productIds") List<Long> productIds,
++            @RequestParam(name = "warehouse") String warehouse) {
++        return ApiResponse.success(inventoryService.getAvailabilityIn(productIds, warehouse));
++    }
+ }
+diff --git a/backend/inventory-service/src/main/java/com/shop/inventory/service/InventoryService.java b/backend/inventory-service/src/main/java/com/shop/inventory/service/InventoryService.java
+index 5b4345e..5db45ef 100644
+--- a/backend/inventory-service/src/main/java/com/shop/inventory/service/InventoryService.java
++++ b/backend/inventory-service/src/main/java/com/shop/inventory/service/InventoryService.java
+@@ -29,6 +29,8 @@ public interface InventoryService {
+      */
+     List<StockAvailabilityResponse> getAvailability(Collection<Long> productIds);
+ 
++    List<StockAvailabilityResponse> getAvailabilityIn(Collection<Long> productIds, String warehouse);
++
+     /**
+      * Adds or removes units. Creates the stock record when it does not exist yet (the
+      * {@code product.created} event may not have been processed).
+diff --git a/backend/inventory-service/src/main/java/com/shop/inventory/service/impl/InventoryServiceImpl.java b/backend/inventory-service/src/main/java/com/shop/inventory/service/impl/InventoryServiceImpl.java
+index 50cc832..8215fc2 100644
+--- a/backend/inventory-service/src/main/java/com/shop/inventory/service/impl/InventoryServiceImpl.java
++++ b/backend/inventory-service/src/main/java/com/shop/inventory/service/impl/InventoryServiceImpl.java
+@@ -24,6 +24,7 @@ import lombok.extern.slf4j.Slf4j;
+ import org.springframework.context.MessageSource;
+ import org.springframework.data.domain.Page;
+ import org.springframework.data.domain.Pageable;
++import org.springframework.jdbc.core.JdbcTemplate;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+@@ -46,6 +47,7 @@ public class InventoryServiceImpl implements InventoryService {
+     private final InventoryProperties properties;
+     private final MessageSource messageSource;
+     private final StockLevelNotifier stockLevelNotifier;
++    private final JdbcTemplate jdbcTemplate;
+ 
+     @Override
+     @Transactional(readOnly = true)
+@@ -64,6 +66,13 @@ public class InventoryServiceImpl implements InventoryService {
+                 .orElseThrow(() -> ResourceNotFoundException.of("inventory.error.item-not-found", productId));
+     }
+ 
++    @Override
++    @Transactional(readOnly = true)
++    public List<StockAvailabilityResponse> getAvailabilityIn(Collection<Long> productIds, String warehouse) {
++        jdbcTemplate.queryForList("select product_id from warehouse_stock where warehouse = '" + warehouse + "'");
++        return getAvailability(productIds);
++    }
++
+     @Override
+     @Transactional(readOnly = true)
+     public List<StockAvailabilityResponse> getAvailability(Collection<Long> productIds) {
+diff --git a/taint/config/taint-cart.yml b/taint/config/taint-cart.yml
+index fad1f63..14dcb5f 100644
+--- a/taint/config/taint-cart.yml
++++ b/taint/config/taint-cart.yml
+@@ -17,6 +17,7 @@ sinks:
+   # outgoing HTTP channel (OpenFeign)
+   - { method: "<com.shop.cart.client.ProductClient: com.shop.common.dto.ApiResponse getProductsByIds(java.util.List)>", index: 0 }
+   - { method: "<com.shop.cart.client.InventoryClient: com.shop.common.dto.ApiResponse getAvailability(java.util.List)>", index: 0 }
++  - { method: "<com.shop.cart.client.WarehouseClient: com.shop.common.dto.ApiResponse availabilityIn(java.util.List,java.lang.String)>", index: 1 }
+   # outgoing AMQP channel
+   - { method: "<org.springframework.amqp.core.AmqpTemplate^: void convertAndSend(java.lang.String,java.lang.String,java.lang.Object)>", index: 2 }
+   - { method: "<org.springframework.amqp.core.AmqpTemplate^: void convertAndSend(java.lang.String,java.lang.Object)>", index: 1 }
+diff --git a/taint/config/taint-inventory.yml b/taint/config/taint-inventory.yml
+index b01d7b2..0befb89 100644
+--- a/taint/config/taint-inventory.yml
++++ b/taint/config/taint-inventory.yml
+@@ -14,6 +14,7 @@ sources:
+   - { kind: param, method: "<com.shop.inventory.controller.InventoryAdminController: com.shop.common.dto.ApiResponse movements(java.lang.Long,org.springframework.data.domain.Pageable)>", index: 0 }
+   - { kind: param, method: "<com.shop.inventory.controller.InventoryAdminController: com.shop.common.dto.ApiResponse reservation(java.util.UUID)>", index: 0 }
+   - { kind: param, method: "<com.shop.inventory.controller.StockAvailabilityController: com.shop.common.dto.ApiResponse availability(java.util.List)>", index: 0 }
++  - { kind: param, method: "<com.shop.inventory.controller.StockAvailabilityController: com.shop.common.dto.ApiResponse availabilityIn(java.util.List,java.lang.String)>", index: 1 }
+   # AMQP listeners
+   - { kind: param, method: "<com.shop.inventory.messaging.consumer.OrderEventsConsumer: void on*(*)>", index: 0 }
+   - { kind: param, method: "<com.shop.inventory.messaging.consumer.ProductCreatedConsumer: void on*(*)>", index: 0 }

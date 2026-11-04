@@ -1,0 +1,12 @@
+diff --git a/taint/config/taint-inventory.yml b/taint/config/taint-inventory.yml
+index b01d7b2..0781920 100644
+--- a/taint/config/taint-inventory.yml
++++ b/taint/config/taint-inventory.yml
+@@ -31,6 +31,7 @@ sinks:
+   - { method: "<org.springframework.jdbc.core.JdbcTemplate: * query*(java.lang.String,*{0+})>", index: 0 }
+   - { method: "<org.springframework.jdbc.core.JdbcTemplate: int update(java.lang.String,*{0+})>", index: 0 }
+   # log injection (CWE-117)
++  - { method: "<org.slf4j.Logger: void trace(java.lang.String,java.lang.Object)>", index: 1 }
+   - { method: "<org.slf4j.Logger: void *(java.lang.String,java.lang.Object)>", index: 1 }
+   - { method: "<org.slf4j.Logger: void *(java.lang.String,java.lang.Object,java.lang.Object)>", index: 1 }
+   - { method: "<org.slf4j.Logger: void *(java.lang.String,java.lang.Object,java.lang.Object)>", index: 2 }

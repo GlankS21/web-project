@@ -1,0 +1,25 @@
+diff --git a/backend/common-lib/src/main/java/com/shop/common/util/Percentages.java b/backend/common-lib/src/main/java/com/shop/common/util/Percentages.java
+new file mode 100644
+index 0000000..8d00d99
+--- /dev/null
++++ b/backend/common-lib/src/main/java/com/shop/common/util/Percentages.java
+@@ -0,0 +1,19 @@
++package com.shop.common.util;
++
++import java.math.BigDecimal;
++import java.math.RoundingMode;
++
++/**
++ * Percentage arithmetic with the rounding used for money.
++ */
++public final class Percentages {
++
++    private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
++
++    private Percentages() {
++    }
++
++    public static BigDecimal of(BigDecimal amount, BigDecimal percent) {
++        return amount.multiply(percent).divide(HUNDRED, 2, RoundingMode.HALF_UP);
++    }
++}

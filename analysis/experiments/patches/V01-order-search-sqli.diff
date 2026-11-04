@@ -1,0 +1,30 @@
+diff --git a/backend/order-service/src/main/java/com/shop/order/service/impl/OrderServiceImpl.java b/backend/order-service/src/main/java/com/shop/order/service/impl/OrderServiceImpl.java
+index 740b208..8435241 100644
+--- a/backend/order-service/src/main/java/com/shop/order/service/impl/OrderServiceImpl.java
++++ b/backend/order-service/src/main/java/com/shop/order/service/impl/OrderServiceImpl.java
+@@ -34,6 +34,7 @@ import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.data.domain.Page;
+ import org.springframework.data.domain.Pageable;
+ import org.springframework.data.jpa.domain.Specification;
++import org.springframework.jdbc.core.JdbcTemplate;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ import org.springframework.transaction.support.TransactionTemplate;
+@@ -70,6 +71,7 @@ public class OrderServiceImpl implements OrderService {
+     private final OrderProperties properties;
+     private final TransactionTemplate transactionTemplate;
+     private final Clock clock;
++    private final JdbcTemplate jdbcTemplate;
+ 
+     /**
+      * Not transactional as a whole: no database connection is held during the call to product-service.
+@@ -185,6 +187,9 @@ public class OrderServiceImpl implements OrderService {
+     @Transactional(readOnly = true)
+     public PageResponse<OrderSummaryResponse> searchOrders(OrderStatus status, UUID userId, String keyword,
+                                                            Pageable pageable) {
++        if (keyword != null) {
++            jdbcTemplate.queryForList("select id from orders where order_number like '%" + keyword + "%'");
++        }
+         Specification<Order> specification = Specification.allOf(
+                 OrderSpecifications.hasStatus(status),
+                 OrderSpecifications.belongsTo(userId),

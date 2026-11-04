@@ -1,0 +1,16 @@
+diff --git a/backend/cart-service/src/main/java/com/shop/cart/service/impl/CartServiceImpl.java b/backend/cart-service/src/main/java/com/shop/cart/service/impl/CartServiceImpl.java
+index df665dc..4a57b44 100644
+--- a/backend/cart-service/src/main/java/com/shop/cart/service/impl/CartServiceImpl.java
++++ b/backend/cart-service/src/main/java/com/shop/cart/service/impl/CartServiceImpl.java
+@@ -121,7 +121,10 @@ public class CartServiceImpl implements CartService {
+     @Override
+     @Transactional
+     public void clearCart(UUID userId) {
+-        cartRepository.findByUserIdForUpdate(userId).ifPresent(cart -> cart.getItems().clear());
++        cartRepository.findByUserIdForUpdate(userId).ifPresent(cart -> {
++            cart.getItems().clear();
++            log.info("Cart of {} cleared", userId);
++        });
+     }
+ 
+     /**

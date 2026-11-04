@@ -1,0 +1,13 @@
+diff --git a/backend/common-lib/src/main/java/com/shop/common/util/TextUtils.java b/backend/common-lib/src/main/java/com/shop/common/util/TextUtils.java
+index b784157..47cb354 100644
+--- a/backend/common-lib/src/main/java/com/shop/common/util/TextUtils.java
++++ b/backend/common-lib/src/main/java/com/shop/common/util/TextUtils.java
+@@ -15,7 +15,7 @@ public final class TextUtils {
+      * @return the text itself when it is short enough, {@code null} for {@code null}
+      */
+     public static String truncate(String text, int maxLength) {
+-        if (text == null || text.length() <= maxLength) {
++        if (text == null || maxLength <= 0 || text.length() <= maxLength) {
+             return text;
+         }
+         int end = Character.isHighSurrogate(text.charAt(maxLength - 1)) ? maxLength - 1 : maxLength;
